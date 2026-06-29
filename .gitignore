@@ -2,6 +2,13 @@
 /1_data/*
 !/1_data/master_*.csv
 
+# Ignore extra R files
+/2_R/2.1_prep_leaps_data.R
+
+# Ignore all generated outputs, but KEEP the .gitkeep file so the folder itself pushes
+/4_output/*
+!/4_output/.gitkeep
+
 # Exclude specific external folders and zips
 /ibraheem_viz_repo/
 ibraheem_viz_repo.zip
