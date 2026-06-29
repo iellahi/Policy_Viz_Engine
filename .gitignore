@@ -1,0 +1,13 @@
+# Ignore all data files (including .csv and .dta), but KEEP the master templates
+/1_data/*
+!/1_data/master_*.csv
+
+# Exclude specific external folders and zips
+/ibraheem_viz_repo/
+ibraheem_viz_repo.zip
+
+# Standard R and System files to ignore
+.Rproj.user/
+.Rhistory
+.RData
+.DS_Store

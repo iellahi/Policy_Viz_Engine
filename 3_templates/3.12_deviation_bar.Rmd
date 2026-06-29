@@ -1,0 +1,127 @@
+---
+title: "Performance Outliers: Deviation Bar Chart"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/master_macro_panel.csv"
+  
+  # Variables
+  entity_var: "district"
+  time_var: "year"
+  filter_time: 2025
+  value_var: "literacy_rate"
+  
+  # The Baseline Target (e.g., the District Average or a Policy Goal)
+  baseline_target: 65
+  
+  # Policy-Facing Labels
+  metric_name: "Standardized Literacy Rate"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 9,
+  fig.height = 6, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+# Define string parameters OUTSIDE the mutate chain to prevent vector duplication
+filter_str <- as.character(params$filter_time)
+
+# Process data to calculate deviations from the baseline
+plot_data <- raw_data %>%
+  # 1. Safely drop NAs
+  drop_na(!!sym(params$time_var), !!sym(params$entity_var), !!sym(params$value_var)) %>%
+  
+  # 2. Type-Safe Filtering for the specific time period
+  mutate(Time_Raw = as.character(!!sym(params$time_var))) %>%
+  filter(Time_Raw == filter_str) %>%
+  
+  # 3. Scrub and map
+  mutate(
+    Entity = str_wrap(str_to_title(str_trim(as.character(!!sym(params$entity_var)))), width = 15),
+    Value = as.numeric(!!sym(params$value_var)),
+    Target = as.numeric(params$baseline_target),
+    
+    # Calculate the gap
+    Deviation = Value - Target,
+    
+    # Flag performance for coloring
+    Performance = ifelse(Deviation >= 0, "Above Target", "Below Target")
+  ) %>%
+  # 4. Sort from highest over-performer to lowest under-performer
+  arrange(Deviation) %>%
+  mutate(Entity = factor(Entity, levels = unique(Entity)))
+```
+
+## Relative Performance Tracking
+
+```{r plot-deviation}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+# Dynamically assign colors (Blue for positive, Red for negative)
+perf_colors <- c("Above Target" = unname(cerp_cols["primary"]), 
+                 "Below Target" = "#D7191C")
+
+ggplot(plot_data, aes(x = Deviation, y = Entity, fill = Performance)) +
+  
+  # Draw the horizontal bars
+  geom_col(width = 0.7) +
+  
+  # Add direct text labels on the bars showing the exact +/- gap
+  geom_text(aes(
+      label = ifelse(Deviation > 0, paste0("+", round(Deviation, 1)), round(Deviation, 1)),
+      # Nudge the text slightly outside the bar based on the direction it is facing
+      hjust = ifelse(Deviation > 0, -0.2, 1.2)
+    ), 
+    fontface = "bold", size = 3.5, color = cerp_cols["dark"]
+  ) +
+  
+  # Draw the heavy anchor line at Zero (which represents the Baseline Target)
+  geom_vline(xintercept = 0, color = cerp_cols["dark"], linewidth = 1) +
+  
+  # Apply colors
+  scale_fill_manual(values = perf_colors) +
+  
+  # Expand limits slightly so the text labels do not get cut off
+  scale_x_continuous(expand = expansion(mult = c(0.15, 0.15))) +
+  
+  theme_cerp() +
+  
+  # Clean up the visual noise
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    panel.grid.major.y = element_blank(), # Remove horizontal lines for clean bars
+    axis.text.x = element_blank(),        # Hide the X-axis numbers since we use direct labels
+    axis.text.y = element_text(size = 11, face = "bold")
+  ) +
+  
+  labs(
+    title = paste("Outlier Analysis:", params$metric_name),
+    subtitle = paste("Comparing regional performance against the baseline target of", params$baseline_target, "for", params$filter_time, "."),
+    x = "Deviation from Target",
+    y = NULL,
+    caption = "Generated via CERP Analytics Template"
+  )
+```

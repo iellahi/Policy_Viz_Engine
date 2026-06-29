@@ -1,0 +1,122 @@
+---
+title: "Treatment Effects: Forest Plot"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/master_micro_survey.csv"
+  
+  # Variables (Using Endline Scores to show final impact)
+  outcome_var: "endline_score"
+  group_var: "treatment_group"
+  
+  # Policy-Facing Labels
+  treatment_label: "Received Program"
+  control_label: "Comparison Group"
+  metric_name: "Endline Test Score"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 9,
+  fig.height = 3.5, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+plot_data <- raw_data %>%
+  # 1. Safely drop NAs only for the required variables
+  drop_na(!!sym(params$outcome_var), !!sym(params$group_var)) %>%
+  
+  # 2. Scrub and standardize text inputs
+  mutate(
+    Clean_Group = str_to_title(str_trim(as.character(!!sym(params$group_var)))),
+    
+    # Intelligently map messy data to the clean Policy Labels defined in YAML
+    Group = case_when(
+      str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes|Received") ~ str_wrap(params$treatment_label, width = 20),
+      TRUE ~ str_wrap(params$control_label, width = 20)
+    )
+  ) %>%
+  
+  # 3. Group data to calculate statistics efficiently
+  group_by(Group) %>%
+  summarize(
+    Estimate = mean(!!sym(params$outcome_var), na.rm = TRUE),
+    SD = sd(!!sym(params$outcome_var), na.rm = TRUE),
+    N = n(),
+    .groups = "drop"
+  ) %>%
+  
+  # 4. Calculate Standard Error and 95% Confidence Intervals
+  mutate(
+    SE = SD / sqrt(N),
+    Lower_CI = Estimate - (1.96 * SE),
+    Upper_CI = Estimate + (1.96 * SE)
+  ) %>%
+  
+  # 5. Lock factor levels so the Treatment group always plots on top
+  mutate(
+    Group = factor(Group, levels = c(
+      str_wrap(params$treatment_label, width = 20), 
+      str_wrap(params$control_label, width = 20)
+    ))
+  )
+```
+
+## Program Impact Estimates
+
+```{r plot-effects}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+# Create a named color vector dynamically based on the wrapped YAML labels
+group_colors <- setNames(
+  c(unname(cerp_cols["primary"]), unname(cerp_cols["neutral"])), 
+  c(str_wrap(params$treatment_label, width = 20), str_wrap(params$control_label, width = 20))
+)
+
+ggplot(plot_data, aes(x = Estimate, y = Group, color = Group)) +
+  
+  # Draw the 95% Confidence Interval error bars
+  geom_errorbarh(aes(xmin = Lower_CI, xmax = Upper_CI), height = 0, linewidth = 2) +
+  
+  # Draw the point estimate (the average)
+  geom_point(size = 7) +
+  
+  # Map the colors explicitly so treatment is primary and control is neutral
+  scale_color_manual(values = group_colors) +
+  
+  theme_cerp() +
+  
+  # Remove the legend entirely and clean axes
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 12, face = "bold")
+  ) +
+  
+  labs(
+    title = paste("Estimated Impact on", params$metric_name),
+    subtitle = "Points represent the average outcome. Lines represent the 95% confidence interval.\nIf the horizontal lines do not overlap, the difference is statistically significant.",
+    x = params$metric_name,
+    y = NULL,
+    caption = "Generated via CERP Analytics Template"
+  )
+```

@@ -1,0 +1,111 @@
+---
+title: "Distribution Shifts: Density Plot"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/master_micro_survey.csv"
+  
+  # Variables
+  outcome_var: "baseline_score"
+  group_var: "treatment_group"
+  
+  # Policy-Facing Labels
+  group1_label: "Treatment Group"    
+  group2_label: "Control Group"   
+  metric_name: "Baseline Test Score"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 9,
+  fig.height = 6, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+plot_data <- raw_data %>%
+  # 1. Safely drop NAs only for the required variables
+  drop_na(!!sym(params$outcome_var), !!sym(params$group_var)) %>%
+  
+  # 2. Scrub and standardize text inputs
+  mutate(
+    Clean_Group = str_to_title(str_trim(as.character(!!sym(params$group_var)))),
+    
+    # Intelligently map messy data to the clean Policy Labels defined in YAML
+    Group = case_when(
+      str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes|Public") ~ str_wrap(params$group1_label, width = 25),
+      TRUE ~ str_wrap(params$group2_label, width = 25)
+    )
+  ) %>%
+  
+  # 3. Lock factor levels so Group 1 always plots vertically on top of Group 2
+  mutate(
+    Group = factor(Group, levels = c(
+      str_wrap(params$group1_label, width = 25), 
+      str_wrap(params$group2_label, width = 25)
+    ))
+  )
+
+# 4. Calculate medians dynamically to draw the dashed reference lines
+median_data <- plot_data %>%
+  group_by(Group) %>%
+  summarize(
+    median_val = median(!!sym(params$outcome_var), na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+## Macro-Level Distribution Shifts
+
+```{r plot-distribution}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+ggplot(plot_data, aes(x = !!sym(params$outcome_var))) +
+  
+  # Draw the density curves, filled with the CERP primary color
+  geom_density(fill = cerp_cols["primary"], color = NA, alpha = 0.8) +
+  
+  # Add the heavy dashed line for the median
+  geom_vline(data = median_data, aes(xintercept = median_val), 
+             color = cerp_cols["accent"], linewidth = 1.2, linetype = "dashed") +
+  
+  # Stack the plots vertically based on our scrubbed grouping variable
+  facet_wrap(~Group, ncol = 1) +
+  
+  theme_cerp() +
+  
+  # Strip the Y-axis text (non-technical readers do not need to read raw density decimals)
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    strip.text = element_text(size = 12, face = "bold") # Format the facet labels cleanly
+  ) +
+  
+  labs(
+    title = paste("Distribution Spread:", params$metric_name),
+    subtitle = "Comparing outcomes across groups. The dashed yellow line represents the median.",
+    x = params$metric_name,
+    caption = "Generated via CERP Analytics Template"
+  )
+```
