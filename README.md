@@ -29,14 +29,14 @@ This repository is a modular, automated reporting engine. It turns raw data into
 
 Choose the right template for your policy narrative:
 
-* **3.1 Dumbbell Plot:** Show absolute magnitude of change over time (Before vs. After).
-* **3.2 Distribution Shift:** Compare the spread of continuous outcomes between two groups.
-* **3.3 Forest Plot:** Prove statistical significance of a program's impact (Treatment vs. Control CIs).
-* **3.5 Waffle Chart:** Visualize proportional adoption rates (Out of 100).
-* **3.6 Slopegraph:** Track clean longitudinal trajectory and ranking changes.
-* **3.7 Diverging Stacked Bar:** Display household survey/Likert sentiment cleanly.
-* **3.8 Icon Array:** Humanize massive sample attrition counts and population sizes.
-* **3.9 Waterfall Chart:** Track budget pipelines, additions, and systemic losses.
+* **3.01 Dumbbell Plot:** Show absolute magnitude of change over time (Before vs. After).
+* **3.02 Distribution Shift:** Compare the spread of continuous outcomes between two groups.
+* **3.03 Forest Plot:** Prove statistical significance of a program's impact (Treatment vs. Control CIs).
+* **3.05 Waffle Chart:** Visualize proportional adoption rates (Out of 100).
+* **3.06 Slopegraph:** Track clean longitudinal trajectory and ranking changes.
+* **3.07 Diverging Stacked Bar:** Display household survey/Likert sentiment cleanly.
+* **3.08 Icon Array:** Humanize massive sample attrition counts and population sizes.
+* **3.09 Waterfall Chart:** Track budget pipelines, additions, and systemic losses.
 * **3.10 Bump Chart:** Highlight specific regional rank changes over time (League Tables).
 * **3.11 Bullet Chart:** Track entity performance against specific KPIs and target zones.
 * **3.12 Deviation Bar Chart:** Instantly identify outlier performance relative to a baseline average.
