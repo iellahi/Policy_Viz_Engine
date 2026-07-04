@@ -1,6 +1,8 @@
 # Ignore all data files (including .csv and .dta), but KEEP the master templates
 /1_data/*
 !/1_data/master_*.csv
+/1_data/*.xlsx
+/1_data/*.xls
 
 # Ignore extra R files
 /2_R/2.1_prep_leaps_data.R
@@ -18,3 +20,5 @@ ibraheem_viz_repo.zip
 .Rhistory
 .RData
 .DS_Store
+
+/3_templates_testing/*.html

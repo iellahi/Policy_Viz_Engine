@@ -1,0 +1,129 @@
+---
+title: "Sample Attrition: Icon Array"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/master_micro_survey.csv"
+  
+  # Variables
+  category_var: "attrition_status"
+  
+  # Array Math
+  scale_factor: 50   # 1 dot = X units. Adjust this so the total number of dots on screen is around 100.
+  
+  # Policy-Facing Labels
+  unit_name: "Households"
+  metric_name: "Survey Completion & Attrition"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 8,
+  fig.height = 6, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+# 1. Calculate the raw counts directly from the microdata
+array_data <- raw_data %>%
+  # Drop missing statuses
+  drop_na(!!sym(params$category_var)) %>%
+  
+  # Scrub text and group messy data into strict attrition categories
+  mutate(
+    Clean_Status = str_trim(as.character(!!sym(params$category_var))),
+    Category = case_when(
+      str_detect(Clean_Status, "(?i)Survey|Complete|Success") ~ "Surveyed",
+      str_detect(Clean_Status, "(?i)Refuse|Deny") ~ "Refused",
+      str_detect(Clean_Status, "(?i)Not Reach|Unreach|Miss|Absent") ~ "Not Reached",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  
+  # Aggregate the counts
+  count(Category, name = "count") %>%
+  
+  # 2. Calculate the number of dots needed based on the YAML scale factor
+  mutate(dots_needed = round(count / params$scale_factor)) %>%
+  # Drop categories that round down to 0 dots
+  filter(dots_needed > 0)
+
+# 3. "Uncount" the data: Copies each row N times so we have exactly one row per dot
+dot_df <- array_data %>%
+  uncount(dots_needed) %>%
+  mutate(id = row_number())
+
+# 4. Calculate grid dimensions dynamically to make it a rough square
+total_dots <- nrow(dot_df)
+cols <- ceiling(sqrt(total_dots))
+
+# 5. Assign X and Y coordinates to construct the neat grid
+dot_df <- dot_df %>%
+  mutate(
+    x = (id - 1) %% cols + 1,
+    y = ceiling(id / cols),
+    # Lock the factor levels so the most important categories plot and color correctly
+    Category = factor(Category, levels = c("Surveyed", "Refused", "Not Reached", "Other"))
+  )
+```
+
+## Final Sample Composition
+
+```{r plot-icon-array}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+ggplot(dot_df, aes(x = x, y = y, color = Category)) +
+  
+  # Draw the "Icons" (thick circles). 
+  # Using shape 16 (solid dot) with size 5 creates a clean, readable dot matrix.
+  geom_point(size = 6, shape = 16, alpha = 0.9) +
+  
+  # coord_equal prevents the dots from stretching into ovals
+  coord_equal() +
+  
+  # Use high-contrast colors to differentiate success from attrition
+  scale_color_manual(values = c(
+    "Surveyed"    = unname(cerp_cols["primary"]),  # Dark Blue/CERP Primary
+    "Refused"     = "#E69F00",                     # Orange/Warning
+    "Not Reached" = unname(cerp_cols["neutral"]),  # Grey
+    "Other"       = "#B0B0B0"                      # Light Grey
+  )) +
+  
+  theme_cerp() +
+  
+  # Strip all axes, gridlines, and backgrounds to leave only the dots floating in space
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 11, face = "bold")
+  ) +
+  
+  labs(
+    title = params$metric_name,
+    subtitle = paste0("Each dot represents ", params$scale_factor, " ", tolower(params$unit_name), "."),
+    caption = "Generated via CERP Analytics Template"
+  )
+```

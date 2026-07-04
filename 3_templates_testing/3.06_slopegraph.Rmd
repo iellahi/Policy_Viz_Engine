@@ -1,0 +1,119 @@
+---
+title: "Longitudinal Panel: Slopegraph"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/master_macro_panel.csv"
+  
+  # Variables
+  entity_var: "district"
+  time_var: "year"
+  value_var: "literacy_rate"
+  
+  # Time Parameters (The two anchor points to compare)
+  start_time: 2021
+  end_time: 2025
+  
+  # Policy-Facing Labels
+  metric_name: "Literacy Rate (%)"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 8,
+  fig.height = 6, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+# Define string parameters OUTSIDE the mutate chain to prevent vector duplication
+start_str <- as.character(params$start_time)
+end_str <- as.character(params$end_time)
+
+plot_data <- raw_data %>%
+  # 1. Safely drop NAs only for the specific variables required
+  drop_na(!!sym(params$time_var), !!sym(params$entity_var), !!sym(params$value_var)) %>%
+  
+  # 2. Type-Safe Filtering: Convert data to character to match our safe parameters
+  mutate(Time_Raw = as.character(!!sym(params$time_var))) %>%
+  filter(Time_Raw %in% c(start_str, end_str)) %>%
+  
+  # 3. Scrub and wrap Entity names
+  mutate(
+    Entity = str_wrap(str_to_title(str_trim(as.character(!!sym(params$entity_var)))), width = 15),
+    Value = as.numeric(!!sym(params$value_var)),
+    # Lock factor levels so start time is ALWAYS on the left
+    Time = factor(Time_Raw, levels = c(start_str, end_str))
+  )
+
+# 4. Isolate data for direct left and right text labeling to avoid using a messy Y-axis
+left_labels <- plot_data %>% filter(Time == start_str)
+right_labels <- plot_data %>% filter(Time == end_str)
+```
+
+## Longitudinal Ranking and Trajectory
+
+```{r plot-slopegraph}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+ggplot(plot_data, aes(x = Time, y = Value, group = Entity)) +
+  
+  # Draw the connecting lines
+  geom_line(color = cerp_cols["neutral"], linewidth = 1.2, alpha = 0.8) +
+  
+  # Draw the anchor points at start and end
+  geom_point(color = cerp_cols["primary"], size = 3.5) +
+  
+  # Direct Left Labels: District Name + Value
+  geom_text(data = left_labels, 
+            aes(label = paste0(Entity, " (", Value, ")")), 
+            hjust = 1.1, fontface = "bold", size = 4.5, color = cerp_cols["dark"]) +
+  
+  # Direct Right Labels: Just the Value
+  geom_text(data = right_labels, 
+            aes(label = Value), 
+            hjust = -0.3, fontface = "bold", size = 4.5, color = cerp_cols["dark"]) +
+  
+  # Expand limits horizontally so the text does not get cut off by the edge of the image
+  scale_x_discrete(expand = expansion(mult = c(0.4, 0.2))) +
+  
+  theme_cerp() +
+  
+  # Strip the Y-axis entirely for maximum data-ink ratio
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(size = 14, face = "bold")
+  ) +
+  
+  labs(
+    title = paste("Shift in", params$metric_name),
+    subtitle = paste("Tracking regional trajectories from", params$start_time, "to", params$end_time, "."),
+    x = NULL,
+    y = NULL,
+    caption = "Generated via CERP Analytics Template"
+  )
+```

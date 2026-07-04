@@ -361,9 +361,9 @@ user to write any R code.</p>
 <h2>Repository Architecture</h2>
 <ul>
 <li><strong>/1_data</strong> | <strong>The Drop Zone:</strong> Place raw
-<code>.csv</code> files here.</li>
+<code>.csv</code> or <code>.xlsx</code> files here.</li>
 <li><strong>/2_R</strong> | <strong>The Engine Room:</strong> Houses
-setup themes and the master render script.</li>
+setup themes, the Excel converter, and the master render script.</li>
 <li><strong>/3_templates</strong> | <strong>The Factory:</strong>
 Contains parameterized <code>.Rmd</code> templates. Users only edit the
 YAML headers here.</li>
@@ -375,6 +375,9 @@ Final generated HTML and compiled PDF reports.</li>
 <h2>Prerequisites &amp; Setup</h2>
 <ol style="list-style-type: decimal">
 <li><p>Install <strong>R</strong> and <strong>RStudio</strong>.</p></li>
+<li><p>Download the repository and <strong>always open the
+<code>cerp_viz_repo.Rproj</code> file first</strong> to automatically
+set the correct working directory.</p></li>
 <li><p>Initialize the reproducible environment by opening the R console
 and running:</p>
 <pre class="r"><code>install.packages(&quot;renv&quot;)
@@ -385,35 +388,39 @@ tinytex::install_tinytex()</code></pre></li>
 <div id="quick-start-guide" class="section level2">
 <h2>Quick Start Guide</h2>
 <ol style="list-style-type: decimal">
-<li><strong>Drop Data:</strong> Place your new <code>.csv</code> into
-the <code>/1_data</code> folder.</li>
+<li><strong>Drop Data:</strong> Place your new <code>.csv</code> or
+<code>.xlsx</code> into the <code>/1_data</code> folder.</li>
 <li><strong>Update Parameters:</strong> Open the desired template in
 <code>/3_templates</code> and update the top 5 lines of text (the YAML
 header) to match your dataset variables and labels.</li>
 <li><strong>Generate:</strong> Open <code>2_R/2.2_master_knit.R</code>
-and click “Run”. Retrieve your final report from
-<code>/4_output</code>.</li>
+and click “Run”. (If you provided an Excel file, the engine will
+automatically convert it to a CSV first). Retrieve your final report
+from <code>/4_output</code>.</li>
 </ol>
 </div>
 <div id="template-dictionary" class="section level2">
 <h2>Template Dictionary</h2>
 <p>Choose the right template for your policy narrative:</p>
 <ul>
-<li><strong>3.1 Dumbbell Plot:</strong> Show absolute magnitude of
+<li><strong>3.01 Dumbbell Plot:</strong> Show absolute magnitude of
 change over time (Before vs. After).</li>
-<li><strong>3.2 Distribution Shift:</strong> Compare the spread of
+<li><strong>3.02 Distribution Shift:</strong> Compare the spread of
 continuous outcomes between two groups.</li>
-<li><strong>3.3 Forest Plot:</strong> Prove statistical significance of
+<li><strong>3.03 Forest Plot:</strong> Prove statistical significance of
 a program’s impact (Treatment vs. Control CIs).</li>
-<li><strong>3.5 Waffle Chart:</strong> Visualize proportional adoption
+<li><strong>3.04 Subgroup Impacts:</strong> Visualize differential
+program effects across specific population segments or demographic
+cohorts.</li>
+<li><strong>3.05 Waffle Chart:</strong> Visualize proportional adoption
 rates (Out of 100).</li>
-<li><strong>3.6 Slopegraph:</strong> Track clean longitudinal trajectory
-and ranking changes.</li>
-<li><strong>3.7 Diverging Stacked Bar:</strong> Display household
+<li><strong>3.06 Slopegraph:</strong> Track clean longitudinal
+trajectory and ranking changes.</li>
+<li><strong>3.07 Diverging Stacked Bar:</strong> Display household
 survey/Likert sentiment cleanly.</li>
-<li><strong>3.8 Icon Array:</strong> Humanize massive sample attrition
+<li><strong>3.08 Icon Array:</strong> Humanize massive sample attrition
 counts and population sizes.</li>
-<li><strong>3.9 Waterfall Chart:</strong> Track budget pipelines,
+<li><strong>3.09 Waterfall Chart:</strong> Track budget pipelines,
 additions, and systemic losses.</li>
 <li><strong>3.10 Bump Chart:</strong> Highlight specific regional rank
 changes over time (League Tables).</li>
@@ -431,16 +438,11 @@ daily interaction and operational consistency over time.</li>
 <h2>Troubleshooting &amp; Roadmap</h2>
 <ul>
 <li><strong>Script Failures:</strong> If a template fails during the
-master render, verify that your CSV contains no <code>NA</code> values
+master render, verify that your data contains no <code>NA</code> values
 in critical columns, and ensure your YAML variable names exactly match
-your CSV headers.</li>
+your headers (case-sensitive).</li>
 <li><strong>Roadmap:</strong>
 <ul>
-<li><strong>Git Initialization:</strong> Set up a
-<code>.gitignore</code> file (specifically excluding
-<code>/4_output/*</code> and <code>/1_data/*</code> to keep the repo
-lightweight), initialize the repository, commit the current state, and
-push the suite to GitHub.</li>
 <li><strong>Messy Data Stress Test:</strong> Pull a raw, uncleaned
 dataset from a previous field project, drop it into the data folder, and
 run the templates to identify and patch any remaining edge cases.</li>

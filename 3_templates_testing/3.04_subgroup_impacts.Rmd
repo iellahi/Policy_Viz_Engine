@@ -1,0 +1,132 @@
+---
+title: "Subgroup Impacts: Coefficient Plot"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/master_micro_survey.csv"
+  
+  # Variables
+  outcome_var: "endline_score"
+  group_var: "treatment_group"
+  subgroup_var: "income_tier" # The demographic variable to split the data by
+  
+  # Policy-Facing Labels
+  metric_name: "Impact on Endline Score (Treatment vs. Control)"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 9,
+  fig.height = 5, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+plot_data <- raw_data %>%
+  # 1. Safely drop NAs only for the specific variables used in this plot
+  drop_na(!!sym(params$outcome_var), !!sym(params$group_var), !!sym(params$subgroup_var)) %>%
+  
+  # 2. Scrub and map messy text to strict internal computational labels
+  mutate(
+    Clean_Group = str_to_title(str_trim(as.character(!!sym(params$group_var)))),
+    Internal_Group = case_when(
+      str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes|Received") ~ "TREAT",
+      TRUE ~ "CTRL"
+    ),
+    # Clean up the subgroup categories (e.g., standardizing "low", "Low ", "LOW")
+    Subgroup = str_to_title(str_trim(as.character(!!sym(params$subgroup_var))))
+  ) %>%
+  
+  # 3. Calculate Mean, Variance, and Count per Subgroup & Treatment Arm
+  group_by(Subgroup, Internal_Group) %>%
+  summarize(
+    Mean = mean(!!sym(params$outcome_var), na.rm = TRUE),
+    Var = var(!!sym(params$outcome_var), na.rm = TRUE),
+    N = n(),
+    .groups = "drop"
+  ) %>%
+  
+  # 4. Reshape data so Treatment and Control are side-by-side for each Subgroup
+  pivot_wider(
+    names_from = Internal_Group,
+    values_from = c(Mean, Var, N)
+  ) %>%
+  
+  # 5. Calculate the Average Treatment Effect (ATE) and 95% Confidence Intervals
+  mutate(
+    ATE = Mean_TREAT - Mean_CTRL,
+    # Standard Error of the difference between two means
+    SE = sqrt((Var_TREAT / N_TREAT) + (Var_CTRL / N_CTRL)),
+    Lower_CI = ATE - (1.96 * SE),
+    Upper_CI = ATE + (1.96 * SE),
+    
+    # Check if the effect is statistically significant (CI doesn't cross zero)
+    Is_Sig = ifelse(Lower_CI > 0 | Upper_CI < 0, "Significant", "Not Significant"),
+    
+    # Sort the subgroups from highest impact to lowest for a clean visual hierarchy
+    Subgroup = fct_reorder(Subgroup, ATE)
+  )
+```
+
+## Heterogeneous Treatment Effects (HTE)
+
+```{r plot-coefficient}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+ggplot(plot_data, aes(y = Subgroup, x = ATE)) +
+  
+  # The Null Effect Line: Anchors the entire chart at zero difference
+  geom_vline(xintercept = 0, color = cerp_cols["dark"], linetype = "dashed", linewidth = 1) +
+  
+  # Draw the 95% Confidence Intervals
+  geom_errorbarh(aes(xmin = Lower_CI, xmax = Upper_CI, color = Is_Sig), 
+                 height = 0, linewidth = 2) +
+  
+  # Draw the Point Estimate (Average Treatment Effect)
+  geom_point(aes(color = Is_Sig), size = 6) +
+  
+  # Direct labels showing the exact numerical impact
+  geom_text(aes(label = sprintf("%+0.1f", ATE)), 
+            vjust = -1.5, fontface = "bold", size = 4) +
+  
+  # Color-code based on significance (Grey if it touches zero, Primary color if significant)
+  scale_color_manual(values = c(
+    "Significant" = unname(cerp_cols["primary"]),
+    "Not Significant" = unname(cerp_cols["neutral"])
+  )) +
+  
+  theme_cerp() +
+  
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 12, face = "bold"),
+    panel.grid.minor.x = element_blank()
+  ) +
+  
+  labs(
+    title = paste("Subgroup Impact:", params$metric_name),
+    subtitle = "Comparing average treatment effects across demographics.\nGrey lines cross zero, indicating no statistically significant impact for that group.",
+    x = "Difference (Treatment - Control)",
+    y = NULL,
+    caption = "Generated via CERP Analytics Template"
+  )
+```

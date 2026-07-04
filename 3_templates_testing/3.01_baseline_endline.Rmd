@@ -1,0 +1,124 @@
+---
+title: "Program Impact: Dumbbell Plot"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/master_micro_survey.csv"
+  
+  # Variables
+  group_var: "treatment_group"
+  before_var: "baseline_score"
+  after_var: "endline_score"
+  
+  # Policy-Facing Labels
+  treatment_label: "Treatment"
+  control_label: "Control"
+  metric_name: "Standardized Test Score"
+---
+
+```{r setup, include=FALSE}
+# Global chunk options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 9,
+  fig.height = 3.5, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+plot_data <- raw_data %>%
+  # 1. Safely drop NAs only in the columns essential for this visualization
+  drop_na(!!sym(params$group_var), !!sym(params$before_var), !!sym(params$after_var)) %>%
+  
+  # 2. Scrub and standardize text (fixes trailing spaces, case inconsistencies)
+  mutate(
+    Clean_Group = str_to_title(str_trim(as.character(!!sym(params$group_var)))),
+    
+    # Intelligently map messy data to the clean Policy Labels defined in YAML
+    # and wrap text to 15 characters so long labels don't ruin the Y-axis margin
+    Group = case_when(
+      str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes") ~ str_wrap(params$treatment_label, width = 15),
+      TRUE ~ str_wrap(params$control_label, width = 15)
+    )
+  ) %>%
+  
+  # 3. Efficiently calculate means grouped by our clean labels
+  group_by(Group) %>%
+  summarize(
+    Before = mean(!!sym(params$before_var), na.rm = TRUE),
+    After  = mean(!!sym(params$after_var), na.rm = TRUE),
+    .groups  = "drop"
+  ) %>%
+  
+  # 4. Reshape data structurally for ggplot
+  pivot_longer(
+    cols = c(Before, After),
+    names_to = "Time",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    Time = factor(Time, levels = c("Before", "After"))
+  )
+```
+
+## Performance Shifts
+
+```{r plot-dumbbell}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+# Isolate data to attach labels strictly to the top line (acting as a clean legend)
+label_data <- plot_data %>%
+  filter(Group == str_wrap(params$treatment_label, width = 15))
+
+ggplot(plot_data, aes(x = Score, y = Group)) +
+  
+  # Draw the connecting line between Before and After
+  geom_line(aes(group = Group), color = cerp_cols["neutral"], linewidth = 2) +
+  
+  # Draw the Before and After dots
+  geom_point(aes(color = Time), size = 5) +
+  
+  # Add "Before" and "After" text directly above the top dots
+  geom_text(data = label_data, aes(label = Time, color = Time), 
+            vjust = -2, fontface = "bold", size = 4.5) +
+  
+  # Map CERP colors
+  scale_color_manual(values = c(
+    "Before" = unname(cerp_cols["neutral"]), 
+    "After"  = unname(cerp_cols["primary"])
+  )) +
+  
+  # Expand Y limits slightly so the text labels aren't cut off at the top edge
+  scale_y_discrete(expand = expansion(mult = c(0.2, 0.4))) +
+  
+  theme_cerp() +
+  
+  # Strip unnecessary legends
+  theme(legend.position = "none") +
+  
+  labs(
+    title = paste("Impact Shift:", params$metric_name),
+    subtitle = "Comparing overall averages before and after the program.",
+    x = params$metric_name,
+    y = NULL,
+    caption = "Generated via CERP Analytics Template"
+  )
+```

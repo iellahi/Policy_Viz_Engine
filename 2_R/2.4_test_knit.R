@@ -11,7 +11,7 @@ library(cli)
 source("2.3_excel_to_csv.R")
 
 # 1. Define your core directories based on the project architecture
-template_dir <- "../3_templates"
+template_dir <- "../3_templates_testing"
 output_dir   <- "../4_output"
 
 # Ensure the output directory exists

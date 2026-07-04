@@ -1,0 +1,125 @@
+---
+title: "High-Frequency Tracker: Calendar Heatmap"
+author: "Ibraheem Saqib Ellahi"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Master Data Path
+  data_path: "../1_data/babychecker.csv"
+  
+  # Variables
+  date_var: "Scan Date"
+  value_var: "adoption_rate"
+  
+  # Policy-Facing Labels
+  metric_name: "Daily Adoption Rate (%)"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.path = "../4_output/figures/",
+  fig.width = 10,
+  fig.height = 3.5, 
+  fig.retina = 3
+)
+```
+
+```{r load-and-prep}
+library(tidyverse)
+library(lubridate)
+
+# Load data
+raw_data <- read_csv(params$data_path)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+plot_data <- raw_data %>%
+  # 1. Safely drop rows missing the actual date string
+  drop_na(!!sym(params$date_var)) %>%
+  
+  # 2. Standardize Date and Numeric Value
+  mutate(
+    Date = as.Date(!!sym(params$date_var)),
+    Value = as.numeric(!!sym(params$value_var))
+  ) %>%
+  
+  # 3. Missing Day Protection: Ensure every single day exists in the sequence
+  # so the calendar grid doesn't collapse if there's a gap in the data.
+  complete(Date = seq.Date(min(Date, na.rm = TRUE), max(Date, na.rm = TRUE), by = "day")) %>%
+  
+  # 4. Mathematical Calendar Generation
+  mutate(
+    # Extract structural components
+    Year = year(Date),
+    Month = month(Date, label = TRUE, abbr = FALSE),
+    # Start the week on Monday (1)
+    DayOfWeek = wday(Date, label = TRUE, abbr = TRUE, week_start = 1),
+    
+    # Calculate the exact week of the month for grid positioning
+    first_day_of_month = floor_date(Date, "month"),
+    first_day_wday = wday(first_day_of_month, week_start = 1),
+    WeekOfMonth = ceiling((day(Date) + first_day_wday - 1) / 7),
+    
+    # Reverse the factor so Monday plots at the top of the Y-axis
+    DayOfWeek = fct_rev(DayOfWeek)
+  )
+```
+
+## Daily Interaction & Adoption
+
+```{r plot-heatmap}
+source("../2_R/2.0_setup_theme.R", local = TRUE)
+
+ggplot(plot_data, aes(x = WeekOfMonth, y = DayOfWeek, fill = Value)) +
+  
+  # Draw the calendar squares with a thin white border to separate them
+  geom_tile(color = "white", linewidth = 0.5) +
+  
+  # Split the chart into individual months (Removed scales = "free_x" to avoid aspect ratio crashes)
+  facet_wrap(~ Month, nrow = 1) +
+  
+  # Ensure the squares stay perfectly square (GitHub style)
+  coord_equal() +
+  
+  # Use a continuous color gradient: Light Grey (Low) to CERP Primary (High)
+  scale_fill_gradient(
+    low = "#EBEBEB", 
+    high = unname(cerp_cols["primary"]),
+    na.value = "#F5F5F5", # Missing days get a very faint empty block
+    name = params$metric_name
+  ) +
+  
+  theme_cerp() +
+  
+  # Strip unnecessary axes to leave a pure grid aesthetic
+  theme(
+    legend.position = "top",
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.key.width = unit(2, "cm"),
+    
+    # Clean up the axes and grids
+    axis.title = element_blank(),
+    axis.text.x = element_blank(), # Hide week numbers
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    
+    # Format the Month headers
+    strip.text = element_text(size = 12, face = "bold", hjust = 0),
+    strip.background = element_blank(),
+    panel.spacing = unit(0.2, "lines") # Pull the months close together
+  ) +
+  
+  labs(
+    title = paste("High-Frequency Engagement:", params$metric_name),
+    subtitle = "Tracking daily systemic interaction. Darker squares indicate higher adoption rates.",
+    caption = "Generated via CERP Analytics Template"
+  )
+```
