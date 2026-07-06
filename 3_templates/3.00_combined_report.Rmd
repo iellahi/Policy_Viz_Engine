@@ -1,0 +1,122 @@
+---
+title: "CERP Combined Report"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    self_contained: true
+params:
+  config_path: !r here::here("render_config.yml")
+---
+
+```{r combined-setup, include=FALSE}
+# ------------------------------------------------------------------------------
+# 3.00 — Combined report (parent). Stitches the visuals named in the config's
+# `combined.include` list into ONE self-contained HTML, in order, under one
+# shared house style. It renders NOTHING of its own — each section is a child
+# template rendered as an html_fragment with its own data + params, then inlined.
+#
+# Design notes:
+#  * Config (render_config.yml) is the single source of truth; this parent
+#    re-reads it so there is no second place to keep in sync.
+#  * Each child is rendered in a FRESH R process via xfun::Rscript_call
+#    (xfun ships with rmarkdown/knitr — no new dependency). That gives clean
+#    param/env isolation and sidesteps nested-knit option clashes.
+#  * Children run with combined_mode=TRUE, which (a) suppresses their code echo
+#    and (b) skips their per-file CSS injection — the shell below injects
+#    cerp_style.css exactly once for the whole page.
+#  * A child failure yields an inline error box, not a dead report.
+# ------------------------------------------------------------------------------
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(here)
+library(yaml)
+
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
+config   <- yaml::read_yaml(params$config_path)
+data_dir <- config$defaults$data_dir %||% "1_data"
+combined <- config$combined
+reports_by_id <- stats::setNames(
+  config$reports,
+  vapply(config$reports, function(e) e$id %||% NA_character_, character(1))
+)
+
+render_child_fragment <- function(entry) {
+  overrides <- entry$params %||% list()
+  overrides$combined_mode <- TRUE
+  if (!is.null(entry$data)) {
+    overrides$data_path <- here::here(data_dir, entry$data)
+  }
+  tmp <- tempfile(fileext = ".html")
+  # Fresh Rscript process: isolated env, no nested-knit interference.
+  xfun::Rscript_call(
+    rmarkdown::render,
+    list(
+      input         = here::here("3_templates", entry$template),
+      output_format = rmarkdown::html_fragment(),
+      output_dir    = dirname(tmp),
+      output_file   = basename(tmp),
+      params        = overrides,
+      quiet         = TRUE
+    )
+  )
+  paste(readLines(tmp, warn = FALSE), collapse = "\n")
+}
+```
+
+```{r combined-style, results='asis'}
+# House style once for the whole page, plus a little combined-report chrome.
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+cat("
+<style>
+  .cerp-report { margin: 0 0 3.5rem 0; padding-bottom: 1.5rem;
+                 border-bottom: 1px solid #d7e3e6; }
+  .cerp-report:last-child { border-bottom: none; }
+  .cerp-error  { background: #fbeaea; border: 1px solid #e0b4b4;
+                 color: #7a1f1f; padding: 0.9rem 1.1rem; border-radius: 6px;
+                 font-family: 'Libre Franklin', sans-serif; }
+</style>
+")
+```
+
+```{r combined-header, results='asis'}
+cat(sprintf("<h1>%s</h1>\n", combined$title %||% "CERP Combined Report"))
+if (!is.null(combined$author)) {
+  cat(sprintf("<p style='color:#5a7079;'>%s &middot; %s</p>\n",
+              combined$author, format(Sys.Date(), "%B %d, %Y")))
+}
+if (!is.null(combined$intro)) {
+  cat(sprintf("<p class='lead'>%s</p>\n", combined$intro))
+}
+```
+
+```{r combined-body, results='asis'}
+include_ids <- combined$include %||% list()
+
+if (length(include_ids) == 0) {
+  cat("<div class='cerp-error'>combined.include is empty — nothing to stitch.</div>")
+}
+
+for (id in include_ids) {
+  entry <- reports_by_id[[id]]
+
+  cat(sprintf('\n<div class="cerp-report" id="report-%s">\n', id))
+
+  if (is.null(entry)) {
+    cat(sprintf('<div class="cerp-error">Unknown id "%s" in combined.include.</div>', id))
+  } else {
+    frag <- tryCatch(
+      render_child_fragment(entry),
+      error = function(e) sprintf(
+        '<div class="cerp-error"><strong>Failed to render &quot;%s&quot;:</strong> %s</div>',
+        id, conditionMessage(e)
+      )
+    )
+    cat(frag)
+  }
+
+  cat('\n</div>\n')
+}
+```

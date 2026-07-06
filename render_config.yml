@@ -1,0 +1,181 @@
+# ==============================================================================
+# render_config.yml — CERP Automated Visualization Suite (Phase 3)
+# ------------------------------------------------------------------------------
+# THIS is the file you edit — never the R. `2_R/2.2_master_knit.R` reads it.
+#
+# Model: OVERRIDE-ONLY. Each template's own YAML header still holds its full set
+# of default params. Here you list ONLY what you want to change. Anything you
+# omit falls back to the template default.
+#
+# Each entry under `reports:` renders one HTML into 4_output/ named <id>.html.
+#   id        (required) unique key; also the output filename stem.
+#   template  (required) filename in 3_templates/.
+#   data      (optional) dataset filename; resolved under `defaults.data_dir`
+#             via here(). Omit to use the template's own default data_path.
+#   enabled   (optional, default true) set false to skip without deleting.
+#   params    (optional) map of param overrides passed straight to render().
+#
+# Same template may appear in several entries (different id + data) to render
+# it more than once. To point a visual at field data, just change `data:`.
+# ==============================================================================
+
+defaults:
+  data_dir: "1_data"          # dataset names resolve here via here::here()
+
+reports:
+
+  - id: baseline_endline
+    template: 3.01_baseline_endline.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      group_var: treatment_group
+      report_title: "Program Impact: Dumbbell Plot"
+
+  - id: distribution_shifts
+    template: 3.02_distribution_shifts.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      outcome_var: baseline_score
+      group_var: treatment_group
+      report_title: "Distribution Shifts: Density Plot"
+
+  - id: treatment_effects
+    template: 3.03_treatment_effects.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      outcome_var: endline_score
+      group_var: treatment_group
+      report_title: "Treatment Effects: Forest Plot"
+
+  - id: subgroup_impacts
+    template: 3.04_subgroup_impacts.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      outcome_var: endline_score
+      subgroup_var: income_tier
+      report_title: "Subgroup Impacts: Coefficient Plot"
+
+  - id: waffle_composition
+    template: 3.05_waffle_chart.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      status_var: tech_adopted
+      report_title: "Composition Overview: Waffle Chart"
+
+  - id: slopegraph
+    template: 3.06_slopegraph.Rmd
+    data: master_macro_panel.csv
+    enabled: true
+    params:
+      entity_var: district
+      value_var: literacy_rate
+      start_time: 2021
+      end_time: 2025
+      report_title: "Longitudinal Panel: Slopegraph"
+
+  - id: diverging_bar
+    template: 3.07_diverging_bar.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      entity_var: district
+      response_var: parent_trust
+      report_title: "Survey Sentiment: Diverging Bar Chart"
+
+  - id: icon_array
+    template: 3.08_icon_array.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      category_var: attrition_status
+      report_title: "Sample Attrition: Icon Array"
+
+  - id: waterfall_budget
+    template: 3.09_waterfall_chart.Rmd
+    data: master_budget_pipeline.csv
+    enabled: true
+    params:
+      category_var: budget_stage
+      value_var: budget_amount
+      report_title: "Budget Pipeline: Waterfall Chart"
+
+  - id: bump_chart
+    template: 3.10_bump_chart.Rmd
+    data: master_macro_panel.csv
+    enabled: true
+    params:
+      entity_var: district
+      value_var: literacy_rate
+      highlight_entity: Lahore
+      report_title: "League Table: Bump Chart"
+
+  - id: bullet_chart
+    template: 3.11_bullet_chart.Rmd
+    data: master_macro_panel.csv
+    enabled: true
+    params:
+      entity_var: district
+      value_var: literacy_rate
+      target_var: target_score
+      filter_time: 2025
+      report_title: "Target Tracker: Bullet Chart"
+
+  - id: deviation_bar
+    template: 3.12_deviation_bar.Rmd
+    data: master_macro_panel.csv
+    enabled: true
+    params:
+      entity_var: district
+      value_var: literacy_rate
+      baseline_target: 65
+      filter_time: 2025
+      report_title: "Performance Outliers: Deviation Bar Chart"
+
+  - id: ridgeline
+    template: 3.13_ridgeline_plot.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      group_var: income_tier
+      value_var: endline_score
+      max_groups: 8
+      report_title: "Distribution Landscape: Ridgeline Plot"
+
+  - id: calendar_heatmap
+    template: 3.14_calendar_heatmap.Rmd
+    data: master_daily_interaction.csv
+    enabled: true
+    params:
+      date_var: date
+      value_var: adoption_rate
+      aggregate: none
+      report_title: "High-Frequency Tracker: Calendar Heatmap"
+
+# ------------------------------------------------------------------------------
+# Combined report: stitches selected visuals into ONE self-contained HTML.
+#   enabled  build it or not (individual reports above render regardless).
+#   output   filename in 4_output/.
+#   include  ORDERED list of ids from `reports:` above — controls what appears
+#            and in what sequence. Ids must be enabled to be included.
+# ------------------------------------------------------------------------------
+
+combined:
+  enabled: true
+  output: cerp_combined_report.html
+  title: "CERP Visualization Suite — Combined Report"
+  author: "Ibraheem Saqib Ellahi"
+  intro: >
+    A single-file compendium of selected CERP policy visuals. Each section is
+    rendered from its own template and dataset, then stitched under one shared
+    house style.
+  include:
+    - baseline_endline
+    - treatment_effects
+    - deviation_bar
+    - bump_chart
+    - calendar_heatmap

@@ -8,6 +8,9 @@ output:
     toc: false
     code_folding: hide
 params:
+  # Engine flag: TRUE only when this template is stitched into the
+  # combined report (set by the parent). Leave false for normal renders.
+  combined_mode: false
   # Master Data Path
   data_path: !r here::here("1_data", "master_micro_survey.csv")
   
@@ -31,7 +34,7 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-  echo = TRUE,
+  echo = !isTRUE(params$combined_mode),
   warning = FALSE,
   message = FALSE,
   dev.args = list(bg = "#FAF9F6"),
@@ -42,7 +45,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r cerp-style, echo=FALSE, results='asis'}
+```{r cerp-style, echo=FALSE, results='asis', eval=!isTRUE(params$combined_mode)}
 cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
 ```
 
