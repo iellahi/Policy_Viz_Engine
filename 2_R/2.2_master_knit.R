@@ -92,7 +92,11 @@ cli_alert_success("Config OK. Rendering {length(enabled_reports)} enabled report
 cat("\n")
 
 for (entry in enabled_reports) {
-  out_file <- paste0(entry$id, ".html")
+  # Output name keeps the template's numeric prefix (e.g. 3.01_baseline_endline.html)
+  # so 4_output/ sorts in template order; id keeps it unique.
+  num      <- regmatches(entry$template, regexpr("^[0-9]+\\.[0-9]+", entry$template))
+  stem     <- if (length(num) == 1L) paste0(num, "_", entry$id) else entry$id
+  out_file <- paste0(stem, ".html")
   cli_alert_info("Rendering: {entry$id}  ({entry$template})")
 
   # Build param overrides: entry params + resolved absolute data_path (if given)
@@ -131,7 +135,7 @@ if (isTRUE(combined$enabled)) {
       render(
         input       = parent,
         output_dir  = output_dir,
-        output_file = combined$output %||% "cerp_combined_report.html",
+        output_file = combined$output %||% "3.00_cerp_combined_report.html",
         envir       = new.env(),
         quiet       = TRUE
       )

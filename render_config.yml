@@ -166,7 +166,7 @@ reports:
 
 combined:
   enabled: true
-  output: cerp_combined_report.html
+  output: 3.00_cerp_combined_report.html
   title: "CERP Visualization Suite — Combined Report"
   author: "Ibraheem Saqib Ellahi"
   intro: >
