@@ -1,6 +1,6 @@
 ---
-title: "Distribution Shifts: Density Plot"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
 output: 
   html_document:
@@ -9,7 +9,7 @@ output:
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_micro_survey.csv"
+  data_path: !r here::here("1_data", "master_micro_survey.csv")
   
   # Variables
   outcome_var: "baseline_score"
@@ -19,6 +19,14 @@ params:
   group1_label: "Treatment Group"    
   group2_label: "Control Group"   
   metric_name: "Baseline Test Score"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Distribution Shifts: Density Plot"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -26,18 +34,26 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
   fig.height = 6, 
   fig.retina = 3
 )
 ```
 
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
 ```{r load-and-prep}
 library(tidyverse)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
@@ -74,10 +90,9 @@ median_data <- plot_data %>%
   )
 ```
 
-## Macro-Level Distribution Shifts
 
 ```{r plot-distribution}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
 
 ggplot(plot_data, aes(x = !!sym(params$outcome_var))) +
   
@@ -103,9 +118,9 @@ ggplot(plot_data, aes(x = !!sym(params$outcome_var))) +
   ) +
   
   labs(
-    title = paste("Distribution Spread:", params$metric_name),
-    subtitle = "Comparing outcomes across groups. The dashed yellow line represents the median.",
-    x = params$metric_name,
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Distribution Spread:", params$metric_name)),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("Comparing outcomes across groups. The dashed yellow line represents the median."),
+    x = if (nzchar(params$x_label)) params$x_label else (params$metric_name),
+    caption = params$source_note
   )
 ```

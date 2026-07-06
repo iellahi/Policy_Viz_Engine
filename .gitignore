@@ -21,4 +21,10 @@ ibraheem_viz_repo.zip
 .RData
 .DS_Store
 
+# Knitted HTML never lives next to templates — output belongs in /4_output only
+/3_templates/*.html
 /3_templates_testing/*.html
+README.html
+
+CLAUDE.md
+PLAN.md

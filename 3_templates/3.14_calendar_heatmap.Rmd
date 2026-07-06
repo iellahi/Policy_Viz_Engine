@@ -1,22 +1,35 @@
 ---
-title: "High-Frequency Tracker: Calendar Heatmap"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_daily_interaction.csv"
-  
+  data_path: !r here::here("1_data", "master_daily_interaction.csv")
+
   # Variables
-  date_var: "date"
-  value_var: "adoption_rate"
-  
+  date_var: "date"          # handles plain dates AND raw timestamps
+  value_var: "adoption_rate" # ignored when aggregate = "count"
+
+  # How to get one value per day:
+  #   "none"  = data already has one row per day; use value_var directly
+  #   "count" = count rows per day (e.g. one row per scan/visit/event)
+  #   "mean" / "sum" = aggregate value_var per day
+  aggregate: "none"
+
   # Policy-Facing Labels
   metric_name: "Daily Adoption Rate (%)"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "High-Frequency Tracker: Calendar Heatmap"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -24,102 +37,124 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 10,
-  fig.height = 3.5, 
+  fig.height = 3.5,
   fig.retina = 3
 )
+```
+
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
 ```
 
 ```{r load-and-prep}
 library(tidyverse)
 library(lubridate)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+# Load data (headers and values whitespace-scrubbed)
+raw_data <- cerp_load(params$data_path)
+
+# Validate columns: value_var is only required when it will actually be used
+required <- params$date_var
+if (params$aggregate %in% c("none", "mean", "sum")) {
+  required <- c(required, params$value_var)
+}
+cerp_validate(raw_data, required)
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
 # ==============================================================================
-plot_data <- raw_data %>%
-  # 1. Safely drop rows missing the actual date string
-  drop_na(!!sym(params$date_var)) %>%
-  
-  # 2. Standardize Date and Numeric Value
+# 1. Parse dates robustly: "2025-11-01 04:36:41", ISO timestamps, plain dates
+dated <- raw_data %>%
+  drop_na(all_of(params$date_var)) %>%
+  mutate(Date = cerp_parse_date(.data[[params$date_var]])) %>%
+  drop_na(Date)
+
+# 2. Collapse to exactly one value per day, per the aggregate parameter
+daily <- switch(params$aggregate,
+  "count" = dated %>% count(Date, name = "Value"),
+  "mean"  = dated %>%
+    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
+    group_by(Date) %>% summarize(Value = mean(V, na.rm = TRUE), .groups = "drop"),
+  "sum"   = dated %>%
+    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
+    group_by(Date) %>% summarize(Value = sum(V, na.rm = TRUE), .groups = "drop"),
+  "none"  = {
+    if (anyDuplicated(dated$Date) > 0) stop(
+      "Multiple rows share the same date, but aggregate is 'none'. ",
+      "Set the 'aggregate' parameter to 'count' (rows per day), ",
+      "'mean', or 'sum' so the template knows how to combine them."
+    )
+    dated %>% transmute(Date, Value = cerp_numeric(.data[[params$value_var]],
+                                                   params$value_var))
+  },
+  stop("Unknown aggregate option: '", params$aggregate,
+       "'. Use 'none', 'count', 'mean', or 'sum'.")
+)
+
+# 3. Missing Day Protection + calendar grid math
+plot_data <- daily %>%
+  complete(Date = seq.Date(min(Date), max(Date), by = "day")) %>%
   mutate(
-    Date = as.Date(!!sym(params$date_var)),
-    Value = as.numeric(!!sym(params$value_var))
-  ) %>%
-  
-  # 3. Missing Day Protection: Ensure every single day exists in the sequence
-  # so the calendar grid doesn't collapse if there's a gap in the data.
-  complete(Date = seq.Date(min(Date, na.rm = TRUE), max(Date, na.rm = TRUE), by = "day")) %>%
-  
-  # 4. Mathematical Calendar Generation
-  mutate(
-    # Extract structural components
     Year = year(Date),
     Month = month(Date, label = TRUE, abbr = FALSE),
-    # Start the week on Monday (1)
     DayOfWeek = wday(Date, label = TRUE, abbr = TRUE, week_start = 1),
-    
-    # Calculate the exact week of the month for grid positioning
     first_day_of_month = floor_date(Date, "month"),
     first_day_wday = wday(first_day_of_month, week_start = 1),
     WeekOfMonth = ceiling((day(Date) + first_day_wday - 1) / 7),
-    
-    # Reverse the factor so Monday plots at the top of the Y-axis
     DayOfWeek = fct_rev(DayOfWeek)
   )
+
+n_years <- n_distinct(plot_data$Year)
 ```
 
-## Daily Interaction & Adoption
 
-```{r plot-heatmap}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+```{r plot-heatmap, fig.height=max(3.5, 3.2 * n_distinct(plot_data$Year))}
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
 
-ggplot(plot_data, aes(x = WeekOfMonth, y = DayOfWeek, fill = Value)) +
-  
-  # Draw the calendar squares with a thin white border to separate them
-  geom_tile(color = "white", linewidth = 0.5) +
-  
-  # Split the chart into individual months (Removed scales = "free_x" to avoid aspect ratio crashes)
-  facet_wrap(~ Month, nrow = 1) +
-  
-  # Ensure the squares stay perfectly square (GitHub style)
+p <- ggplot(plot_data, aes(x = WeekOfMonth, y = DayOfWeek, fill = Value)) +
+
+  geom_tile(color = cerp_cols[["bg"]], linewidth = 0.6) +
+
   coord_equal() +
-  
-  # Use a continuous color gradient: Light Grey (Low) to CERP Primary (High)
+
+  # Sequential ramp: box tint (low) -> primary (high); missing days stay faint
   scale_fill_gradient(
-    low = "#EBEBEB", 
+    low = unname(cerp_cols["box"]),
     high = unname(cerp_cols["primary"]),
-    na.value = "#F5F5F5", # Missing days get a very faint empty block
+    na.value = "#f1ede4",
     name = params$metric_name
   ) +
-  
+
   theme_cerp() +
-  
-  # Strip unnecessary axes to leave a pure grid aesthetic
+
   theme(
     legend.position = "top",
-    legend.title = element_text(size = 11, face = "bold"),
-    legend.key.width = unit(2, "cm"),
-    
-    # Clean up the axes and grids
+    legend.justification = "left",
+    legend.key.width = unit(1.8, "cm"),
+    legend.key.height = unit(0.35, "cm"),
+    legend.title = element_text(family = cerp_font_caption, size = 10,
+                                color = cerp_cols[["subtle"]]),
     axis.title = element_blank(),
-    axis.text.x = element_blank(), # Hide week numbers
-    axis.ticks = element_blank(),
+    axis.text.x = element_blank(),
     panel.grid = element_blank(),
-    
-    # Format the Month headers
-    strip.text = element_text(size = 12, face = "bold", hjust = 0),
-    strip.background = element_blank(),
-    panel.spacing = unit(0.2, "lines") # Pull the months close together
+    panel.spacing = unit(0.25, "lines"),
+    strip.text = element_text(size = 11)
   ) +
-  
+
   labs(
-    title = paste("High-Frequency Engagement:", params$metric_name),
-    subtitle = "Tracking daily systemic interaction. Darker squares indicate higher adoption rates.",
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (paste("High-Frequency Engagement:", params$metric_name)),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("One square per day. Darker means higher; pale squares are days with no data."),
+    caption = params$source_note
   )
+
+# Single year: months in one row. Multiple years: one row of months per year.
+if (n_years > 1) {
+  p + facet_grid(Year ~ Month)
+} else {
+  p + facet_wrap(~ Month, nrow = 1)
+}
 ```

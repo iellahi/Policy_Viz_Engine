@@ -1,0 +1,56 @@
+/* CERP report styling — injected into every template's HTML output.
+   Design.md: bg #FAF9F6 | text #1b3a4b | boxes #e8f4f5 | Charter/Georgia body,
+   Libre Franklin headings & captions. */
+
+body {
+  background-color: #FAF9F6;
+  color: #1b3a4b;
+  font-family: Charter, Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.main-container {
+  max-width: 880px;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
+  color: #1b3a4b;
+  font-weight: 600;
+}
+
+h1.title {
+  font-size: 1.85rem;
+  margin-bottom: 0.25rem;
+}
+
+h4.author, h4.date {
+  font-family: "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
+  color: #54707f;
+  font-size: 0.9rem;
+}
+
+pre, code {
+  background-color: #e8f4f5;
+  border: none;
+  border-radius: 4px;
+  color: #1b3a4b;
+}
+
+blockquote {
+  background-color: #e8f4f5;
+  border-left: 4px solid #457b9d;
+  color: #1b3a4b;
+  padding: 10px 16px;
+}
+
+a { color: #457b9d; }
+
+.btn-default, .btn {
+  font-family: "Libre Franklin", Arial, sans-serif;
+  font-size: 0.8rem;
+}
+
+img { background-color: #FAF9F6; }

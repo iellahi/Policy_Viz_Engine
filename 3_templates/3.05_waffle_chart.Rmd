@@ -1,23 +1,32 @@
 ---
-title: "Program Adoption: Waffle Chart"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_micro_survey.csv"
-  
+  data_path: !r here::here("1_data", "master_micro_survey.csv")
+
   # Variables
   status_var: "tech_adopted"
-  
+
+  # Optional: fixed category order as comma-separated values (e.g. "Green,Yellow,Red").
+  # Leave "" to order by frequency (largest first).
+  category_order: ""
+
   # Policy-Facing Labels
-  success_label: "Successfully Adopted"
-  failure_label: "Pending / Opted Out"
   metric_name: "Hardware Rollout Adoption"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Composition Overview: Waffle Chart"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -25,97 +34,117 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 7,
-  fig.height = 5, 
+  fig.height = 5.5,
   fig.retina = 3
 )
 ```
 
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
 ```{r load-and-prep}
 library(tidyverse)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+# Load data (headers and values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
+# Handles ANY number of categories (binary, ternary triage, or more).
 # ==============================================================================
-# 1. Calculate the exact percentage of success from raw microdata
-summary_stats <- raw_data %>%
-  # Safely drop NAs only for the required status variable
-  drop_na(!!sym(params$status_var)) %>%
-  
-  # Scrub text inputs and map messy data to a binary success outcome
-  mutate(
-    Clean_Status = str_to_title(str_trim(as.character(!!sym(params$status_var)))),
-    Is_Success = str_detect(Clean_Status, "(?i)Yes|1|True|Adopt|Success")
-  ) %>%
-  
-  # Aggregate up to the final percentages
-  summarize(
-    total = n(),
-    successes = sum(Is_Success, na.rm = TRUE),
-    pct = round((successes / total) * 100),
-    .groups = "drop"
-  )
+# 1. Count each category of the status variable
+cat_counts <- raw_data %>%
+  filter(!is.na(.data[[params$status_var]]),
+         nzchar(as.character(.data[[params$status_var]]))) %>%
+  count(Category = as.character(.data[[params$status_var]]), name = "n")
 
-# 2. Build the 10x10 Waffle Grid mathematically
-waffle_data <- expand.grid(x = 1:10, y = 1:10) %>%
-  arrange(y, x) %>% # Fill the grid bottom-to-top, left-to-right
-  mutate(
-    id = row_number(),
-    
-    # Assign labels using the YAML parameters, wrapping text for clean legends
-    Category = ifelse(id <= summary_stats$pct, 
-                      str_wrap(params$success_label, width = 20), 
-                      str_wrap(params$failure_label, width = 20)),
-                      
-    # Lock factor levels to maintain strict color consistency
-    Category = factor(Category, levels = c(
-      str_wrap(params$success_label, width = 20), 
-      str_wrap(params$failure_label, width = 20)
-    ))
-  )
-```
-
-## Program Adoption Overview
-
-```{r plot-waffle}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
-
-# Dynamically assign colors to the wrapped categories
-waffle_colors <- setNames(
-  c(unname(cerp_cols["primary"]), unname(cerp_cols["neutral"])), 
-  c(str_wrap(params$success_label, width = 20), str_wrap(params$failure_label, width = 20))
+if (nrow(cat_counts) == 0) stop("No non-missing values found in '", params$status_var, "'.")
+if (nrow(cat_counts) > 8) stop(
+  "'", params$status_var, "' has ", nrow(cat_counts),
+  " distinct categories — too many for a readable waffle chart. ",
+  "Choose a variable with 8 or fewer categories."
 )
 
-ggplot(waffle_data, aes(x = x, y = y, fill = Category)) +
-  
-  # geom_tile creates the squares. The thick white border creates the "waffle" separation.
-  geom_tile(color = "white", linewidth = 2) +
-  
-  # coord_equal strictly locks the aspect ratio so squares don't stretch into rectangles
+# 2. Resolve category order: YAML-specified, else by frequency
+if (nzchar(params$category_order)) {
+  wanted <- str_squish(str_split(params$category_order, ",")[[1]])
+  lvls <- c(intersect(wanted, cat_counts$Category),
+            setdiff(cat_counts$Category, wanted))
+} else {
+  lvls <- cat_counts %>% arrange(desc(n)) %>% pull(Category)
+}
+
+# 3. Exact percentages + largest-remainder rounding so squares sum to exactly 100
+cat_counts <- cat_counts %>%
+  mutate(Category = factor(Category, levels = lvls)) %>%
+  arrange(Category) %>%
+  mutate(pct_exact = 100 * n / sum(n))
+
+squares <- floor(cat_counts$pct_exact)
+leftover <- 100 - sum(squares)
+if (leftover > 0) {
+  top_up <- order(cat_counts$pct_exact - squares, decreasing = TRUE)[seq_len(leftover)]
+  squares[top_up] <- squares[top_up] + 1
+}
+cat_counts$squares <- squares
+
+# 4. Legend labels carry the exact share, so the chart needs no axis at all
+cat_counts <- cat_counts %>%
+  mutate(Label = paste0(Category, " — ", round(pct_exact), "%"))
+
+# 5. Build the 10x10 grid, filled bottom-to-top, left-to-right
+waffle_data <- expand.grid(x = 1:10, y = 1:10) %>%
+  arrange(y, x) %>%
+  mutate(Label = factor(
+    rep(cat_counts$Label, times = cat_counts$squares),
+    levels = cat_counts$Label
+  ))
+
+# 6. Colors: semantic if the categories carry universal meaning
+#    (Green/Yellow/Red triage, Yes/No, risk levels), otherwise house palette
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+semantic <- cerp_match_semantic(as.character(cat_counts$Category))
+waffle_colors <- setNames(
+  if (!is.null(semantic)) unname(semantic) else cerp_fill_n(nrow(cat_counts)),
+  cat_counts$Label
+)
+
+# 7. Headline for the subtitle: lead with the largest category
+top_cat <- cat_counts %>% slice_max(pct_exact, n = 1, with_ties = FALSE)
+```
+
+
+```{r plot-waffle}
+ggplot(waffle_data, aes(x = x, y = y, fill = Label)) +
+
+  # Squares with a background-colored border for the classic waffle separation
+  geom_tile(color = cerp_cols[["bg"]], linewidth = 2) +
+
+  # Lock the aspect ratio so squares stay square
   coord_equal() +
-  
+
   scale_fill_manual(values = waffle_colors) +
-  
+
   theme_cerp() +
-  
-  # Strip all axes, text, and gridlines to leave a completely clean grid
+
+  # Strip all axes and grids — the legend percentages tell the whole story
   theme(
     axis.text = element_blank(),
     axis.title = element_blank(),
-    axis.ticks = element_blank(),
     panel.grid = element_blank(),
     legend.position = "top",
-    legend.title = element_blank(),
-    legend.text = element_text(size = 11, face = "bold")
+    legend.justification = "left"
   ) +
-  
+
   labs(
-    title = paste("Adoption Rate:", params$metric_name),
-    subtitle = paste0("Each square represents 1% of the total sample. Current rate: ", summary_stats$pct, "%."),
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (params$metric_name),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0( "Each square is 1% of the sample (N = ", scales::comma(sum(cat_counts$n)), "). ", top_cat$Category, " accounts for ", round(top_cat$pct_exact), "%." )),
+    caption = params$source_note
   )
 ```

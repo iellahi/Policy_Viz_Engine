@@ -1,6 +1,6 @@
 ---
-title: "Longitudinal Panel: Slopegraph"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
 output: 
   html_document:
@@ -9,7 +9,7 @@ output:
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_macro_panel.csv"
+  data_path: !r here::here("1_data", "master_macro_panel.csv")
   
   # Variables
   entity_var: "district"
@@ -22,6 +22,15 @@ params:
   
   # Policy-Facing Labels
   metric_name: "Literacy Rate (%)"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Longitudinal Panel: Slopegraph"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -29,18 +38,28 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 8,
   fig.height = 6, 
   fig.retina = 3
 )
 ```
 
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
 ```{r load-and-prep}
 library(tidyverse)
+if (!require("ggrepel")) install.packages("ggrepel")
+library(ggrepel)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
@@ -70,10 +89,9 @@ left_labels <- plot_data %>% filter(Time == start_str)
 right_labels <- plot_data %>% filter(Time == end_str)
 ```
 
-## Longitudinal Ranking and Trajectory
 
 ```{r plot-slopegraph}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
 
 ggplot(plot_data, aes(x = Time, y = Value, group = Entity)) +
   
@@ -83,18 +101,32 @@ ggplot(plot_data, aes(x = Time, y = Value, group = Entity)) +
   # Draw the anchor points at start and end
   geom_point(color = cerp_cols["primary"], size = 3.5) +
   
-  # Direct Left Labels: District Name + Value
-  geom_text(data = left_labels, 
-            aes(label = paste0(Entity, " (", Value, ")")), 
-            hjust = 1.1, fontface = "bold", size = 4.5, color = cerp_cols["dark"]) +
-  
-  # Direct Right Labels: Just the Value
-  geom_text(data = right_labels, 
-            aes(label = Value), 
-            hjust = -0.3, fontface = "bold", size = 4.5, color = cerp_cols["dark"]) +
+  # Direct Left Labels: Name + Value, repelled vertically so entities that
+  # start at the same value fan out instead of overprinting
+  ggrepel::geom_text_repel(
+    data = left_labels,
+    aes(label = paste0(Entity, "  ", Value)),
+    direction = "y", hjust = 1, nudge_x = -0.15,
+    fontface = "bold", size = 4, family = cerp_font_caption,
+    color = cerp_cols[["text"]],
+    box.padding = 0.15, point.padding = 0.3,
+    segment.color = "#b7c9d3", segment.size = 0.3, seed = 26
+  ) +
+
+  # Direct Right Labels: Value + Name, so every line is identifiable at BOTH
+  # ends without tracing it back across the chart
+  ggrepel::geom_text_repel(
+    data = right_labels,
+    aes(label = paste0(Value, "  ", Entity)),
+    direction = "y", hjust = 0, nudge_x = 0.15,
+    fontface = "bold", size = 4, family = cerp_font_caption,
+    color = cerp_cols[["text"]],
+    box.padding = 0.15, point.padding = 0.3,
+    segment.color = "#b7c9d3", segment.size = 0.3, seed = 26
+  ) +
   
   # Expand limits horizontally so the text does not get cut off by the edge of the image
-  scale_x_discrete(expand = expansion(mult = c(0.4, 0.2))) +
+  scale_x_discrete(expand = expansion(mult = c(0.35, 0.35))) +
   
   theme_cerp() +
   
@@ -110,10 +142,10 @@ ggplot(plot_data, aes(x = Time, y = Value, group = Entity)) +
   ) +
   
   labs(
-    title = paste("Shift in", params$metric_name),
-    subtitle = paste("Tracking regional trajectories from", params$start_time, "to", params$end_time, "."),
-    x = NULL,
-    y = NULL,
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Shift in", params$metric_name)),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0("Tracking regional trajectories from ", params$start_time, " to ", params$end_time, ".")),
+    x = if (nzchar(params$x_label)) params$x_label else (NULL),
+    y = if (nzchar(params$y_label)) params$y_label else (NULL),
+    caption = params$source_note
   )
 ```

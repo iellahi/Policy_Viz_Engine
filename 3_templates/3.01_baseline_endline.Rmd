@@ -1,6 +1,6 @@
 ---
-title: "Program Impact: Dumbbell Plot"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
 output: 
   html_document:
@@ -9,7 +9,7 @@ output:
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_micro_survey.csv"
+  data_path: !r here::here("1_data", "master_micro_survey.csv")
   
   # Variables
   group_var: "treatment_group"
@@ -20,6 +20,15 @@ params:
   treatment_label: "Treatment"
   control_label: "Control"
   metric_name: "Standardized Test Score"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Program Impact: Dumbbell Plot"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -28,18 +37,26 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
   fig.height = 3.5, 
   fig.retina = 3
 )
 ```
 
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
 ```{r load-and-prep}
 library(tidyverse)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
@@ -79,10 +96,9 @@ plot_data <- raw_data %>%
   )
 ```
 
-## Performance Shifts
 
 ```{r plot-dumbbell}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
 
 # Isolate data to attach labels strictly to the top line (acting as a clean legend)
 label_data <- plot_data %>%
@@ -115,10 +131,10 @@ ggplot(plot_data, aes(x = Score, y = Group)) +
   theme(legend.position = "none") +
   
   labs(
-    title = paste("Impact Shift:", params$metric_name),
-    subtitle = "Comparing overall averages before and after the program.",
-    x = params$metric_name,
-    y = NULL,
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Impact Shift:", params$metric_name)),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("Comparing overall averages before and after the program."),
+    x = if (nzchar(params$x_label)) params$x_label else (params$metric_name),
+    y = if (nzchar(params$y_label)) params$y_label else (NULL),
+    caption = params$source_note
   )
 ```

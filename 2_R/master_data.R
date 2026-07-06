@@ -1,5 +1,6 @@
 library(tidyverse)
 library(lubridate)
+library(here)
 set.seed(2026)
 
 # ==============================================================================
@@ -16,7 +17,7 @@ macro_panel <- expand_grid(district = districts, year = years) %>%
     target_score = 80
   )
 
-write_csv(macro_panel, "../1_data/master_macro_panel.csv")
+write_csv(macro_panel, here::here("1_data", "master_macro_panel.csv"))
 
 # ==============================================================================
 # DATASET 2: Budget Pipeline Data 
@@ -27,7 +28,7 @@ budget_pipeline <- tibble(
   budget_amount = c(5000000, -450000, -200000, 4350000)
 )
 
-write_csv(budget_pipeline, "../1_data/master_budget_pipeline.csv")
+write_csv(budget_pipeline, here::here("1_data", "master_budget_pipeline.csv"))
 
 # ==============================================================================
 # DATASET 3: Micro Survey Data (Student/Household Level)
@@ -71,7 +72,7 @@ micro_survey <- tibble(
   ) %>%
   select(-impact_multiplier) # Hide the multiplier so it just looks like natural data
 
-write_csv(micro_survey, "../1_data/master_micro_survey.csv")
+write_csv(micro_survey, here::here("1_data", "master_micro_survey.csv"))
 
 # ==============================================================================
 # DATASET 4: Daily Interaction Data (High-Frequency Adoption)
@@ -98,6 +99,6 @@ daily_interaction <- tibble(
   ) %>%
   select(date, active_users, total_enrolled, adoption_rate)
 
-write_csv(daily_interaction, "../1_data/master_daily_interaction.csv")
+write_csv(daily_interaction, here::here("1_data", "master_daily_interaction.csv"))
 
 message("Success! Four optimized master datasets generated in /1_data.")

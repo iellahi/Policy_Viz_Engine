@@ -1,6 +1,6 @@
 ---
-title: "Budget Pipeline: Waterfall Chart"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
 output: 
   html_document:
@@ -9,7 +9,7 @@ output:
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_budget_pipeline.csv"
+  data_path: !r here::here("1_data", "master_budget_pipeline.csv")
   
   # Variables
   category_var: "budget_stage"
@@ -18,6 +18,15 @@ params:
   # Policy-Facing Labels
   final_column_name: "Total Deployed"
   metric_name: "Education Funds Pipeline (PKR)"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Budget Pipeline: Waterfall Chart"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -25,18 +34,26 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
   fig.height = 5.5, 
   fig.retina = 3
 )
 ```
 
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
 ```{r load-and-prep}
 library(tidyverse)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
@@ -96,10 +113,9 @@ plot_data <- clean_data %>%
   )
 ```
 
-## Financial Pipeline Tracker
 
 ```{r plot-waterfall}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
 
 ggplot(plot_data, aes(fill = Type)) +
   
@@ -110,7 +126,7 @@ ggplot(plot_data, aes(fill = Type)) +
   # Draw the classic dashed waterfall connecting lines
   geom_segment(data = plot_data %>% filter(Type != "End"),
                aes(x = id + 0.4, xend = next_id - 0.4, y = ymax, yend = ymax), 
-               linetype = "dashed", color = cerp_cols["dark"]) +
+               linetype = "dashed", color = cerp_cols[["text"]]) +
   
   # Add direct text labels to the bars automatically formatting massive numbers
   geom_text(aes(x = id, 
@@ -122,8 +138,8 @@ ggplot(plot_data, aes(fill = Type)) +
   scale_fill_manual(values = c(
     "Start"     = unname(cerp_cols["primary"]),
     "End"       = unname(cerp_cols["primary"]),
-    "Deduction" = "#D7191C",  # Alert Red
-    "Addition"  = "#ABD9E9"   # Soft Blue
+    "Deduction" = "#e07a5f",  # Terracotta (loss)
+    "Addition"  = "#a8dadc"   # Pale teal (gain)
   )) +
   
   # Format the Y-axis to handle large financial numbers cleanly
@@ -143,10 +159,10 @@ ggplot(plot_data, aes(fill = Type)) +
   ) +
   
   labs(
-    title = paste("Pipeline Breakdown:", params$metric_name),
-    subtitle = "Tracking total allocations against systemic reductions to determine final delivery.",
-    x = NULL,
-    y = params$metric_name,
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Pipeline Breakdown:", params$metric_name)),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("Tracking total allocations against systemic reductions to determine final delivery."),
+    x = if (nzchar(params$x_label)) params$x_label else (NULL),
+    y = if (nzchar(params$y_label)) params$y_label else (params$metric_name),
+    caption = params$source_note
   )
 ```

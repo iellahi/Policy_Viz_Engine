@@ -1,22 +1,35 @@
 ---
-title: "Distribution Landscape: Ridgeline Plot"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_micro_survey.csv"
-  
+  data_path: !r here::here("1_data", "master_micro_survey.csv")
+
   # Variables
   group_var: "income_tier"
   value_var: "endline_score"
-  
+
+  # Readability guard: keep only the N most frequent groups, lump the rest
+  # into "Other" (prevents 20+ facilities from overcrowding the Y-axis)
+  max_groups: 8
+
   # Policy-Facing Labels
   metric_name: "Endline Test Score"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Distribution Landscape: Ridgeline Plot"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -24,84 +37,103 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 6, 
+  fig.height = 6,
   fig.retina = 3
 )
+```
+
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
 ```
 
 ```{r load-and-prep}
 library(tidyverse)
 library(ggridges)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+# Load data (headers and values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
 # ==============================================================================
 plot_data <- raw_data %>%
   # 1. Safely drop NAs
-  drop_na(!!sym(params$group_var), !!sym(params$value_var)) %>%
-  
-  # 2. Scrub strings and enforce numeric values
+  drop_na(all_of(c(params$group_var, params$value_var))) %>%
+
+  # 2. Scrub strings, enforce numeric values
   mutate(
-    Raw_Group = str_to_title(str_trim(as.character(!!sym(params$group_var)))),
-    Group_Clean = str_wrap(Raw_Group, width = 15),
-    Value = as.numeric(!!sym(params$value_var))
+    Group_Raw = str_to_title(str_squish(as.character(.data[[params$group_var]]))),
+    Value = cerp_numeric(.data[[params$value_var]], params$value_var)
   ) %>%
-  
-  # 3. Density Plot Protection: Filter out groups with too few observations to draw a curve
-  group_by(Group_Clean) %>%
+  drop_na(Value) %>%
+
+  # 3. Cardinality guard: keep the max_groups most frequent, lump the rest
+  mutate(Group_Lumped = cerp_lump(Group_Raw, n = params$max_groups)) %>%
+
+  # 4. Density protection: a curve needs enough observations
+  group_by(Group_Lumped) %>%
   filter(n() >= 3) %>%
   ungroup() %>%
-  
-  # 4. Sort the Y-axis dynamically based on the median value of each group
-  mutate(Group = fct_reorder(as.factor(Group_Clean), Value, .fun = median, na.rm = TRUE))
+
+  # 5. Wrap long names, order ridges by median so the eye reads a ranking
+  mutate(
+    Group = str_wrap(as.character(Group_Lumped), width = 18),
+    Group = fct_reorder(Group, Value, .fun = median, na.rm = TRUE)
+  )
+
+n_lumped <- sum(str_detect(as.character(plot_data$Group), "^Other"))
 ```
 
-## Macro-Level Distribution Shifts
 
-```{r plot-ridgeline}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+```{r plot-ridgeline, fig.height=max(4.5, 1 + 0.6 * nlevels(plot_data$Group))}
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+
+# De-emphasize the lumped "Other" ridge; brand color for real groups
+ridge_fills <- setNames(
+  ifelse(str_detect(levels(plot_data$Group), "^Other"),
+         unname(cerp_cols["neutral"]),
+         unname(cerp_cols["primary"])),
+  levels(plot_data$Group)
+)
 
 ggplot(plot_data, aes(x = Value, y = Group, fill = Group)) +
-  
-  # Draw the overlapping mountain ridges
-  # scale > 1 allows the curves to overlap the row above them
+
+  # Overlapping ridges with an internal median line for instant comparison
   geom_density_ridges(
-    scale = 1.8, 
-    color = "white", 
-    linewidth = 1, 
-    alpha = 0.8,
-    rel_min_height = 0.01 # Trims the long, flat invisible tails of the distribution
+    scale = 1.7,
+    color = cerp_cols[["bg"]],
+    linewidth = 0.8,
+    alpha = 0.9,
+    rel_min_height = 0.01,
+    quantile_lines = TRUE,
+    quantiles = 2,
+    vline_color = "#1b3a4b55"
   ) +
-  
-  # Format the X-axis for potentially large numbers
-  scale_x_continuous(labels = scales::comma, expand = c(0, 0)) +
-  
-  # Strip the Y-axis expansion so the mountains sit flush on the bottom line
-  scale_y_discrete(expand = expansion(add = c(0.2, 1.5))) +
-  
-  # Apply the primary brand color to all ridges for a cohesive look
-  scale_fill_manual(values = rep(unname(cerp_cols["primary"]), length(unique(plot_data$Group)))) +
-  
+
+  scale_x_continuous(labels = scales::comma, expand = c(0.01, 0)) +
+  scale_y_discrete(expand = expansion(add = c(0.2, 1.4))) +
+  scale_fill_manual(values = ridge_fills) +
+
   theme_cerp() +
-  
-  # Clean up visual noise
+
   theme(
     legend.position = "none",
-    axis.text.y = element_text(size = 14, face = "bold", color = cerp_cols["dark"]),
-    axis.ticks.y = element_blank(),
-    panel.grid.major.y = element_line(color = "#E0E0E0", linewidth = 0.5)
+    axis.text.y = element_text(size = 12, face = "bold",
+                               color = cerp_cols[["text"]]),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "#e5e1d8", linewidth = 0.45)
   ) +
-  
+
   labs(
-    title = paste("Population Distribution:", params$metric_name),
-    subtitle = "Comparing the macro-level spread of outcomes across different subgroups.",
-    x = params$metric_name,
-    y = NULL,
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Population Distribution:", params$metric_name)),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0( "Each ridge is a group's full distribution; the vertical line marks its median. ", "Ridges are ordered by median, highest at the top", if (n_lumped > 0) paste0(". Smaller groups are combined into ‘Other’") else "", "." )),
+    x = if (nzchar(params$x_label)) params$x_label else (params$metric_name),
+    y = if (nzchar(params$y_label)) params$y_label else (NULL),
+    caption = params$source_note
   )
 ```

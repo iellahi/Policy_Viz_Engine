@@ -1,6 +1,6 @@
 ---
-title: "Sample Attrition: Icon Array"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
 output: 
   html_document:
@@ -9,7 +9,7 @@ output:
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/master_micro_survey.csv"
+  data_path: !r here::here("1_data", "master_micro_survey.csv")
   
   # Variables
   category_var: "attrition_status"
@@ -20,6 +20,13 @@ params:
   # Policy-Facing Labels
   unit_name: "Households"
   metric_name: "Survey Completion & Attrition"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Sample Attrition: Icon Array"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -27,18 +34,26 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 8,
   fig.height = 6, 
   fig.retina = 3
 )
 ```
 
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
 ```{r load-and-prep}
 library(tidyverse)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
@@ -86,10 +101,9 @@ dot_df <- dot_df %>%
   )
 ```
 
-## Final Sample Composition
 
 ```{r plot-icon-array}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
 
 ggplot(dot_df, aes(x = x, y = y, color = Category)) +
   
@@ -122,8 +136,8 @@ ggplot(dot_df, aes(x = x, y = y, color = Category)) +
   ) +
   
   labs(
-    title = params$metric_name,
-    subtitle = paste0("Each dot represents ", params$scale_factor, " ", tolower(params$unit_name), "."),
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (params$metric_name),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0("Each dot represents ", params$scale_factor, " ", tolower(params$unit_name), ".")),
+    caption = params$source_note
   )
 ```

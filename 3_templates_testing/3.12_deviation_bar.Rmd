@@ -1,27 +1,37 @@
 ---
-title: "Performance Outliers: Deviation Bar Chart"
-author: "Ibraheem Saqib Ellahi"
+title: "`r params$report_title`"
+author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
     code_folding: hide
 params:
   # Master Data Path
-  data_path: "../1_data/babychecker.csv"
-  
+  data_path: !r here::here("1_data", "babychecker.csv")
+
   # Variables
   entity_var: "Health Facilities"
-  time_var: "year"
-  filter_time: 2025
-  value_var: "literacy_rate"
-  
-  # The Baseline Target (e.g., the District Average or a Policy Goal)
-  baseline_target: 65
-  
+  time_var: "Scan date"
+  filter_time: 2025       # a year (works on raw dates/timestamps too); "" = keep all rows
+  value_var: "Gestational age-mean"
+
+  # Baseline: a number (policy target), or "mean" to benchmark against the
+  # average across entities — no manual target needed.
+  baseline_target: "mean"
+
   # Policy-Facing Labels
-  metric_name: "Standardized Literacy Rate"
+  metric_name: "Mean Gestational Age at First Scan (weeks)"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Performance Outliers: Deviation Bar Chart"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
 ---
 
 ```{r setup, include=FALSE}
@@ -29,99 +39,133 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path = "../4_output/figures/",
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 6, 
+  fig.height = 6,
   fig.retina = 3
 )
 ```
 
+```{r cerp-style, echo=FALSE, results='asis'}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
 ```{r load-and-prep}
 library(tidyverse)
+library(lubridate)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data
-raw_data <- read_csv(params$data_path)
+# Load data (headers and values whitespace-scrubbed) and validate YAML params
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
 # ==============================================================================
 # DATA SCRUBBING & PROCESSING BLOCK
+# Works on row-level microdata (pre-aggregates to entity means) AND on data
+# that is already one-row-per-entity. Time filter understands plain years,
+# dates, and raw timestamps alike.
 # ==============================================================================
-# Define string parameters OUTSIDE the mutate chain to prevent vector duplication
-filter_str <- as.character(params$filter_time)
+d <- raw_data
 
-# Process data to calculate deviations from the baseline
-plot_data <- raw_data %>%
-  # 1. Safely drop NAs
-  drop_na(!!sym(params$time_var), !!sym(params$entity_var), !!sym(params$value_var)) %>%
-  
-  # 2. Type-Safe Filtering for the specific time period
-  mutate(Time_Raw = as.character(!!sym(params$time_var))) %>%
-  filter(Time_Raw == filter_str) %>%
-  
-  # 3. Scrub and map
+# 1. Time filter (optional): build a comparable key from whatever the time
+#    column contains — "2025", "2025-11-01", or "2025-11-01T04:36:41Z"
+if (nzchar(params$time_var) && nzchar(as.character(params$filter_time))) {
+  time_raw <- d[[params$time_var]]
+  as_dates <- cerp_parse_date(time_raw, quiet = TRUE)
+  time_key <- if (mean(!is.na(as_dates)) > 0.8) {
+    as.character(year(as_dates))            # date-like column -> compare by year
+  } else {
+    str_squish(as.character(time_raw))      # plain years/labels -> compare as text
+  }
+  d <- d %>% filter(time_key == str_squish(as.character(params$filter_time)))
+
+  if (nrow(d) == 0) stop(
+    "No rows remain after filtering '", params$time_var, "' to '",
+    params$filter_time, "'. Values present in the data: ",
+    paste(sort(unique(time_key)), collapse = ", ")
+  )
+}
+
+# 2. Pre-aggregate: one summary value per entity (mean of all its rows).
+#    Harmless when data is already one-row-per-entity.
+agg <- d %>%
   mutate(
-    Entity = str_wrap(str_to_title(str_trim(as.character(!!sym(params$entity_var)))), width = 15),
-    Value = as.numeric(!!sym(params$value_var)),
-    Target = as.numeric(params$baseline_target),
-    
-    # Calculate the gap
-    Deviation = Value - Target,
-    
-    # Flag performance for coloring
-    Performance = ifelse(Deviation >= 0, "Above Target", "Below Target")
+    Entity = str_to_title(str_squish(as.character(.data[[params$entity_var]]))),
+    Value  = cerp_numeric(.data[[params$value_var]], params$value_var)
   ) %>%
-  # 4. Sort from highest over-performer to lowest under-performer
+  drop_na(Entity, Value) %>%
+  group_by(Entity) %>%
+  summarize(Value = mean(Value), n_obs = n(), .groups = "drop")
+
+# 3. Resolve the baseline: fixed policy target, or the grand mean
+use_mean_baseline <- identical(tolower(as.character(params$baseline_target)), "mean")
+target <- if (use_mean_baseline) mean(agg$Value) else as.numeric(params$baseline_target)
+
+baseline_text <- if (use_mean_baseline) {
+  paste0("the average across all ", nrow(agg), " entities (",
+         round(target, 1), ")")
+} else {
+  paste0("the target of ", round(target, 1))
+}
+
+# 4. Deviations, sorted so the biggest laggard sits at the bottom
+plot_data <- agg %>%
+  mutate(
+    Entity_Label = str_wrap(Entity, width = 18),
+    Deviation = Value - target,
+    Performance = ifelse(Deviation >= 0, "Above baseline", "Below baseline")
+  ) %>%
   arrange(Deviation) %>%
-  mutate(Entity = factor(Entity, levels = unique(Entity)))
+  mutate(Entity_Label = factor(Entity_Label, levels = unique(Entity_Label)))
 ```
 
-## Relative Performance Tracking
 
-```{r plot-deviation}
-source("../2_R/2.0_setup_theme.R", local = TRUE)
+```{r plot-deviation, fig.height=max(4, 1 + 0.45 * nrow(plot_data))}
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
 
-# Dynamically assign colors (Blue for positive, Red for negative)
-perf_colors <- c("Above Target" = unname(cerp_cols["primary"]), 
-                 "Below Target" = "#D7191C")
+perf_colors <- c(
+  "Above baseline" = unname(cerp_cols["primary"]),
+  "Below baseline" = unname(cerp_cols["accent"])
+)
 
-ggplot(plot_data, aes(x = Deviation, y = Entity, fill = Performance)) +
-  
-  # Draw the horizontal bars
+ggplot(plot_data, aes(x = Deviation, y = Entity_Label, fill = Performance)) +
+
   geom_col(width = 0.7) +
-  
-  # Add direct text labels on the bars showing the exact +/- gap
-  geom_text(aes(
-      label = ifelse(Deviation > 0, paste0("+", round(Deviation, 1)), round(Deviation, 1)),
-      # Nudge the text slightly outside the bar based on the direction it is facing
-      hjust = ifelse(Deviation > 0, -0.2, 1.2)
-    ), 
-    fontface = "bold", size = 3.5, color = cerp_cols["dark"]
+
+  # Direct labels: the exact +/- gap at the end of each bar
+  geom_text(
+    aes(
+      label = ifelse(Deviation > 0,
+                     paste0("+", round(Deviation, 1)),
+                     round(Deviation, 1)),
+      hjust = ifelse(Deviation > 0, -0.25, 1.25)
+    ),
+    fontface = "bold", size = 3.4, family = cerp_font_caption,
+    color = cerp_cols[["text"]]
   ) +
-  
-  # Draw the heavy anchor line at Zero (which represents the Baseline Target)
-  geom_vline(xintercept = 0, color = cerp_cols["dark"], linewidth = 1) +
-  
-  # Apply colors
+
+  # The baseline anchor
+  geom_vline(xintercept = 0, color = cerp_cols[["text"]], linewidth = 0.9) +
+
   scale_fill_manual(values = perf_colors) +
-  
-  # Expand limits slightly so the text labels do not get cut off
-  scale_x_continuous(expand = expansion(mult = c(0.15, 0.15))) +
-  
+  scale_x_continuous(expand = expansion(mult = c(0.18, 0.18))) +
+
   theme_cerp() +
-  
-  # Clean up the visual noise
+
+  # Direct labels replace the x-axis entirely
   theme(
-    legend.position = "top",
-    legend.title = element_blank(),
-    panel.grid.major.y = element_blank(), # Remove horizontal lines for clean bars
-    axis.text.x = element_blank(),        # Hide the X-axis numbers since we use direct labels
-    axis.text.y = element_text(size = 11, face = "bold")
+    panel.grid.major.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 11, face = "bold",
+                               color = cerp_cols[["text"]])
   ) +
-  
+
   labs(
-    title = paste("Outlier Analysis:", params$metric_name),
-    subtitle = paste("Comparing regional performance against the baseline target of", params$baseline_target, "for", params$filter_time, "."),
-    x = "Deviation from Target",
-    y = NULL,
-    caption = "Generated via CERP Analytics Template"
+    title = if (nzchar(params$chart_title)) params$chart_title else (paste0(params$metric_name, ": Who Is Ahead, Who Is Behind")),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0( "Gap relative to ", baseline_text, if (nzchar(params$time_var) && nzchar(as.character(params$filter_time))) paste0(", ", params$filter_time) else "", "." )),
+    x = if (nzchar(params$x_label)) params$x_label else ("Deviation from baseline"),
+    y = if (nzchar(params$y_label)) params$y_label else (NULL),
+    caption = params$source_note
   )
 ```

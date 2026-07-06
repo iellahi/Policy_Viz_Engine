@@ -4,9 +4,10 @@
 library(readxl)
 library(readr)
 library(tools)
+library(here)
 
 # Define the drop zone
-data_dir <- "../1_data"
+data_dir <- here::here("1_data")
 
 # Find all Excel files in the data directory
 excel_files <- list.files(path = data_dir, pattern = "\\.xlsx?$|\\.xls$", full.names = TRUE)

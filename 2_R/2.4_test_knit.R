@@ -6,13 +6,14 @@
 library(rmarkdown)
 library(fs)
 library(cli)
+library(here)
 
 # 0. Run Pre-Processing: Convert any dropped Excel files to CSVs automatically
-source("2.3_excel_to_csv.R")
+source(here::here("2_R", "2.3_excel_to_csv.R"))
 
 # 1. Define your core directories based on the project architecture
-template_dir <- "../3_templates_testing"
-output_dir   <- "../4_output"
+template_dir <- here::here("3_templates_testing")
+output_dir   <- here::here("4_output")
 
 # Ensure the output directory exists
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
