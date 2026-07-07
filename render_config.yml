@@ -156,6 +156,73 @@ reports:
       aggregate: none
       report_title: "High-Frequency Tracker: Calendar Heatmap"
 
+  # --- Phase 5 templates -------------------------------------------------------
+
+  # Same template (3.15), two entries: a light 5-district demo map and the
+  # fuller Pakistan ADM2 map. geo_file/lookup_file are plain filenames resolved
+  # under 1_data/geo/ by the template.
+  - id: choropleth_demo
+    template: 3.15_choropleth_map.Rmd
+    data: master_district_indicators.csv
+    enabled: true
+    params:
+      region_var: district
+      value_var: literacy_rate
+      geo_file: pk_districts_demo.geojson
+      lookup_file: district_lookup.csv
+      metric_name: "Adult Literacy Rate (%)"
+      report_title: "District Map (Demo): Choropleth"
+
+  - id: choropleth_pk
+    template: 3.15_choropleth_map.Rmd
+    data: master_district_indicators_pk.csv
+    enabled: true
+    params:
+      region_var: district
+      value_var: literacy_rate
+      geo_file: pk_districts_adm2.geojson
+      lookup_file: district_lookup.csv
+      n_bins: 5
+      metric_name: "Adult Literacy Rate (%)"
+      report_title: "Pakistan Districts: Choropleth"
+
+  - id: event_study
+    template: 3.16_event_study.Rmd
+    data: master_event_panel.csv
+    enabled: true
+    params:
+      unit_var: school_id
+      time_var: period
+      event_time_var: event_time
+      treat_var: treated
+      outcome_var: test_score
+      ref_period: -1
+      metric_name: "Test Score"
+      report_title: "Dynamic Impact: Event-Study Plot"
+
+  - id: small_multiples
+    template: 3.17_small_multiples.Rmd
+    data: master_macro_panel.csv
+    enabled: true
+    params:
+      facet_var: district
+      x_var: year
+      y_var: literacy_rate
+      metric_name: "Literacy Rate (%)"
+      report_title: "District Trends: Small Multiples"
+
+  - id: heatmap_matrix
+    template: 3.18_heatmap_matrix.Rmd
+    data: master_macro_panel.csv
+    enabled: true
+    params:
+      row_var: district
+      col_var: year
+      value_var: literacy_rate
+      aggregate: none
+      metric_name: "Literacy Rate (%)"
+      report_title: "District × Year: Heatmap Matrix"
+
 # ------------------------------------------------------------------------------
 # Combined report: stitches selected visuals into ONE self-contained HTML.
 #   enabled  build it or not (individual reports above render regardless).
@@ -179,3 +246,6 @@ combined:
     - deviation_bar
     - bump_chart
     - calendar_heatmap
+    - event_study
+    - small_multiples
+    - heatmap_matrix

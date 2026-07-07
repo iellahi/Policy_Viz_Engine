@@ -1,0 +1,13 @@
+# district_lookup.csv  |  version: 1.0.0  |  updated: 2026-07-07
+# Versioned, human-reviewed crosswalk: messy raw district name -> canonical
+# geojson name. Only TRUE aliases need entries; cerp_harmonize() already
+# normalizes case, whitespace, punctuation and suffixes (District/Tehsil/
+# Capital Territory). Add a row when a render fails on an unmatched name.
+# CHANGELOG: 1.0.0 (2026-07-07) initial crosswalk for master demo + ADM2.
+raw_name,canonical_name,notes
+Lyallpur,Faisalabad,historic name of Faisalabad
+RWP,Rawalpindi,common abbreviation
+D.G. Khan,Dera Ghazi Khan,abbreviated form
+D.I. Khan,Dera Ismail Khan,abbreviated form
+Rahimyar Khan,Rahim Yar Khan,spacing variant
+Islamabad Capital Territory,Islamabad,official long form

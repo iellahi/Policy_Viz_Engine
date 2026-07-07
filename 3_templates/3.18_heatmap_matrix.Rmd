@@ -1,0 +1,174 @@
+---
+title: "`r params$report_title`"
+author: "`r params$report_author`"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Engine flag: TRUE only when this template is stitched into the
+  # combined report (set by the parent). Leave false for normal renders.
+  combined_mode: false
+  # Master Data Path
+  data_path: !r here::here("1_data", "master_macro_panel.csv")
+
+  # Variables
+  row_var: "district"        # categorical axis -> rows
+  col_var: "year"            # categorical axis -> columns
+  value_var: "literacy_rate" # cell value (ignored when aggregate = "count")
+
+  # How to get one value per (row, col) cell:
+  #   "none"  = data already has one row per cell; use value_var directly
+  #   "count" = count rows per cell
+  #   "mean" / "sum" = aggregate value_var per cell
+  aggregate: "none"
+
+  # Print the numeric value inside each cell
+  show_values: true
+
+  # Policy-Facing Labels
+  metric_name: "Literacy Rate (%)"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Category Matrix: Heatmap"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = !isTRUE(params$combined_mode),
+  warning = FALSE,
+  message = FALSE,
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
+  fig.width = 9,
+  fig.height = 5.5,
+  fig.retina = 3
+)
+```
+
+```{r cerp-style, echo=FALSE, results='asis', eval=!isTRUE(params$combined_mode)}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
+```{r load-and-prep}
+library(tidyverse)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed)
+raw_data <- cerp_load(params$data_path)
+
+# value_var is only required when it will actually be used
+required <- c(params$row_var, params$col_var)
+if (params$aggregate %in% c("none", "mean", "sum")) {
+  required <- c(required, params$value_var)
+}
+cerp_validate(raw_data, required)
+
+# ==============================================================================
+# DATA SCRUBBING & PROCESSING BLOCK
+# ==============================================================================
+base <- raw_data %>%
+  drop_na(all_of(c(params$row_var, params$col_var))) %>%
+  mutate(RowCat = as.character(.data[[params$row_var]]),
+         ColCat = as.character(.data[[params$col_var]]))
+
+# Collapse to exactly one value per (row, col) cell
+cell <- switch(params$aggregate,
+  "count" = base %>% count(RowCat, ColCat, name = "Value"),
+  "mean"  = base %>%
+    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
+    group_by(RowCat, ColCat) %>% summarize(Value = mean(V, na.rm = TRUE), .groups = "drop"),
+  "sum"   = base %>%
+    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
+    group_by(RowCat, ColCat) %>% summarize(Value = sum(V, na.rm = TRUE), .groups = "drop"),
+  "none"  = {
+    if (anyDuplicated(base[c("RowCat", "ColCat")]) > 0) stop(
+      "Multiple rows share the same (", params$row_var, ", ", params$col_var,
+      ") cell, but aggregate is 'none'. Set 'aggregate' to 'count', 'mean', ",
+      "or 'sum' so the template knows how to combine them.", call. = FALSE)
+    base %>% transmute(RowCat, ColCat,
+                       Value = cerp_numeric(.data[[params$value_var]], params$value_var))
+  },
+  stop("Unknown aggregate option: '", params$aggregate,
+       "'. Use 'none', 'count', 'mean', or 'sum'.", call. = FALSE)
+)
+
+# Fill the full grid so empty cells appear (grey) rather than vanish
+plot_data <- cell %>% complete(RowCat, ColCat)
+
+# Order columns numerically when they are numbers (e.g. years), else keep as-is;
+# order rows by their mean value so the strongest categories sit together.
+col_levels <- unique(plot_data$ColCat)
+if (!any(is.na(suppressWarnings(as.numeric(col_levels))))) {
+  col_levels <- col_levels[order(as.numeric(col_levels))]
+}
+row_order <- plot_data %>% group_by(RowCat) %>%
+  summarize(m = mean(Value, na.rm = TRUE), .groups = "drop") %>% arrange(m) %>% pull(RowCat)
+
+plot_data <- plot_data %>%
+  mutate(ColCat = factor(ColCat, levels = col_levels),
+         RowCat = factor(RowCat, levels = row_order))
+
+n_rows <- nlevels(plot_data$RowCat)
+val_digits <- if (params$aggregate == "mean") 1 else 0
+mid_val <- mean(range(plot_data$Value, na.rm = TRUE))
+```
+
+
+```{r plot-heatmap-matrix, fig.height=max(4, 0.55 * n_rows + 2.5)}
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+
+p <- ggplot(plot_data, aes(x = ColCat, y = RowCat, fill = Value)) +
+
+  geom_tile(color = cerp_cols[["bg"]], linewidth = 0.8) +
+
+  # Sequential ramp: pale box tint (low) -> steel blue (high); empty cells grey
+  scale_fill_gradient(
+    low = unname(cerp_cols["box"]),
+    high = unname(cerp_cols["primary"]),
+    na.value = "#e6e2d9",
+    name = params$metric_name
+  ) +
+
+  theme_cerp() +
+
+  theme(
+    legend.position = "top",
+    legend.justification = "left",
+    legend.key.width = unit(1.8, "cm"),
+    legend.key.height = unit(0.35, "cm"),
+    legend.title = element_text(family = cerp_font_caption, size = 10,
+                                color = cerp_cols[["subtle"]]),
+    panel.grid = element_blank(),
+    axis.text.y = element_text(face = "bold", color = cerp_cols[["text"]])
+  ) +
+
+  labs(
+    title = if (nzchar(params$chart_title)) params$chart_title else paste("Category Matrix:", params$metric_name),
+    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else "Each cell is shaded by value; darker means higher. Grey cells have no data.",
+    x = if (nzchar(params$x_label)) params$x_label else str_to_title(params$col_var),
+    y = if (nzchar(params$y_label)) params$y_label else str_to_title(params$row_var),
+    caption = params$source_note
+  )
+
+# Optional in-cell value labels, with contrast-aware text color
+if (isTRUE(params$show_values)) {
+  p <- p + geom_text(
+    aes(label = ifelse(is.na(Value), "",
+                       formatC(Value, format = "f", digits = val_digits)),
+        color = Value > mid_val),
+    family = cerp_font_caption, size = 3.4, show.legend = FALSE) +
+    scale_color_manual(values = c("FALSE" = cerp_cols[["text"]], "TRUE" = "#FFFFFF"),
+                       na.value = cerp_cols[["subtle"]])
+}
+
+p
+```

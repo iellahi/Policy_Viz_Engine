@@ -4,6 +4,12 @@
 /1_data/*.xlsx
 /1_data/*.xls
 
+# KEEP the spatial assets: public district boundaries + versioned name crosswalk
+# (non-sensitive; needed by the choropleth template). Re-include the folder first,
+# then its contents.
+!/1_data/geo/
+!/1_data/geo/**
+
 # Ignore extra R files
 /2_R/2.1_prep_leaps_data.R
 
