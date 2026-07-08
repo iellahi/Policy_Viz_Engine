@@ -2,7 +2,7 @@
 title: "`r params$report_title`"
 author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
@@ -13,14 +13,14 @@ params:
   combined_mode: false
   # Master Data Path
   data_path: !r here::here("1_data", "master_micro_survey.csv")
-  
+
   # Variables
   outcome_var: "baseline_score"
   group_var: "treatment_group"
-  
+
   # Policy-Facing Labels
-  group1_label: "Treatment Group"    
-  group2_label: "Control Group"   
+  group1_label: "Treatment Group"
+  group2_label: "Control Group"
   metric_name: "Baseline Test Score"
 
   # --- Report Text (all editable; leave "" to use the smart default) ---
@@ -40,7 +40,7 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "#FAF9F6"),
   fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 6, 
+  fig.height = 6,
   fig.retina = 3
 )
 ```
@@ -54,76 +54,29 @@ library(tidyverse)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_distribution() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-plot_data <- raw_data %>%
-  # 1. Safely drop NAs only for the required variables
-  drop_na(!!sym(params$outcome_var), !!sym(params$group_var)) %>%
-  
-  # 2. Scrub and standardize text inputs
-  mutate(
-    Clean_Group = str_to_title(str_trim(as.character(!!sym(params$group_var)))),
-    
-    # Intelligently map messy data to the clean Policy Labels defined in YAML
-    Group = case_when(
-      str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes|Public") ~ str_wrap(params$group1_label, width = 25),
-      TRUE ~ str_wrap(params$group2_label, width = 25)
-    )
-  ) %>%
-  
-  # 3. Lock factor levels so Group 1 always plots vertically on top of Group 2
-  mutate(
-    Group = factor(Group, levels = c(
-      str_wrap(params$group1_label, width = 25), 
-      str_wrap(params$group2_label, width = 25)
-    ))
-  )
-
-# 4. Calculate medians dynamically to draw the dashed reference lines
-median_data <- plot_data %>%
-  group_by(Group) %>%
-  summarize(
-    median_val = median(!!sym(params$outcome_var), na.rm = TRUE),
-    .groups = "drop"
-  )
 ```
 
 
 ```{r plot-distribution}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-ggplot(plot_data, aes(x = !!sym(params$outcome_var))) +
-  
-  # Draw the density curves, filled with the CERP primary color
-  geom_density(fill = cerp_cols["primary"], color = NA, alpha = 0.8) +
-  
-  # Add the heavy dashed line for the median
-  geom_vline(data = median_data, aes(xintercept = median_val), 
-             color = cerp_cols["accent"], linewidth = 1.2, linetype = "dashed") +
-  
-  # Stack the plots vertically based on our scrubbed grouping variable
-  facet_wrap(~Group, ncol = 1) +
-  
-  theme_cerp() +
-  
-  # Strip the Y-axis text (non-technical readers do not need to read raw density decimals)
-  theme(
-    axis.text.y = element_blank(),
-    axis.title.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    panel.grid.major.y = element_blank(),
-    strip.text = element_text(size = 12, face = "bold") # Format the facet labels cleanly
-  ) +
-  
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Distribution Spread:", params$metric_name)),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("Comparing outcomes across groups. The dashed yellow line represents the median."),
-    x = if (nzchar(params$x_label)) params$x_label else (params$metric_name),
-    caption = params$source_note
-  )
+# Thin wrapper: map the YAML params into viz_distribution() and print the ggplot
+# it returns. Empty-string text params keep the auto-generated defaults.
+viz_distribution(
+  data           = raw_data,
+  outcome_var    = params$outcome_var,
+  group_var      = params$group_var,
+  group1_label   = params$group1_label,
+  group2_label   = params$group2_label,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  source_note    = params$source_note
+)
 ```

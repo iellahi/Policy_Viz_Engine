@@ -64,109 +64,33 @@ if (!requireNamespace("fixest", quietly = TRUE)) {
 }
 suppressMessages(library(fixest))   # attach so i() resolves inside the formula
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# The DiD estimation + event-study plot live in viz_event_study()
+# (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-model_df <- raw_data %>%
-  drop_na(all_of(c(params$unit_var, params$time_var, params$event_time_var,
-                   params$treat_var, params$outcome_var))) %>%
-  mutate(
-    ev_unit  = as.factor(.data[[params$unit_var]]),
-    ev_time  = as.factor(.data[[params$time_var]]),
-    ev_et    = as.integer(round(cerp_numeric(.data[[params$event_time_var]],
-                                             params$event_time_var))),
-    ev_y     = cerp_numeric(.data[[params$outcome_var]], params$outcome_var),
-    # Map a messy treatment flag to a strict 1/0 indicator
-    ev_treat = if_else(
-      str_detect(str_to_lower(str_trim(as.character(.data[[params$treat_var]]))),
-                 "^(1|treat|interven|yes|received|true|t)$|treat|interven"),
-      1L, 0L)
-  ) %>%
-  drop_na(ev_et, ev_y)
-
-if (!(params$ref_period %in% unique(model_df$ev_et))) {
-  stop("ref_period = ", params$ref_period,
-       " is not present in '", params$event_time_var, "'. Available event times: ",
-       paste(sort(unique(model_df$ev_et)), collapse = ", "), call. = FALSE)
-}
-
-# Event-study DiD: relative-time dummies interacted with treatment, unit &
-# period fixed effects, SEs clustered by unit. ref_period is omitted (= 0).
-# NOTE: i()'s ref must be a plain scalar in scope — fixest's formula parser
-# mis-reads an inline `params$ref_period` as two data variables.
-ref_val <- as.integer(params$ref_period)
-model <- fixest::feols(
-  ev_y ~ i(ev_et, ev_treat, ref = ref_val) | ev_unit + ev_time,
-  data = model_df, cluster = ~ev_unit
-)
-
-# Tidy the interaction coefficients into an event-time table. coeftable columns
-# are positional (Estimate, Std. Error, ...) — referenced by index so a renamed
-# header can't silently break the extraction.
-ct <- as.data.frame(fixest::coeftable(model), check.names = FALSE)
-plot_data <- tibble(
-    term     = rownames(ct),
-    Estimate = ct[[1]],
-    SE       = ct[[2]]
-  ) %>%
-  mutate(EventTime = as.integer(str_extract(term, "(?<=::)-?\\d+"))) %>%
-  drop_na(EventTime) %>%
-  select(EventTime, Estimate, SE) %>%
-  # Pin the reference period at exactly 0 (its coefficient is normalized out)
-  bind_rows(tibble(EventTime = params$ref_period, Estimate = 0, SE = 0)) %>%
-  arrange(EventTime) %>%
-  mutate(
-    Lower  = Estimate - 1.96 * SE,
-    Upper  = Estimate + 1.96 * SE,
-    IsRef  = EventTime == params$ref_period
-  )
 ```
 
 
 ```{r plot-event-study}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-ggplot(plot_data, aes(x = EventTime, y = Estimate)) +
-
-  # Zero-effect anchor and the program-onset boundary (between -1 and 0)
-  geom_hline(yintercept = 0, color = cerp_cols[["text"]],
-             linetype = "dashed", linewidth = 0.7) +
-  geom_vline(xintercept = -0.5, color = cerp_cols[["accent"]],
-             linetype = "dotted", linewidth = 0.7) +
-
-  # Connect the point estimates, then draw CIs and points on top
-  geom_line(color = cerp_cols[["neutral"]], linewidth = 0.6) +
-  geom_pointrange(aes(ymin = Lower, ymax = Upper, color = IsRef, shape = IsRef),
-                  linewidth = 0.9, size = 0.7, fatten = 3.5) +
-
-  scale_color_manual(values = c("FALSE" = unname(cerp_cols["primary"]),
-                                "TRUE"  = unname(cerp_cols["subtle"]))) +
-  scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 21)) +
-  scale_x_continuous(breaks = plot_data$EventTime) +
-
-  annotate("text", x = -0.5, y = Inf, label = "  Program start",
-           hjust = 0, vjust = 1.4, family = cerp_font_caption, size = 3.2,
-           color = cerp_cols[["accent"]]) +
-
-  theme_cerp() +
-
-  theme(
-    legend.position = "none",
-    panel.grid.major.x = element_blank()
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else paste("Dynamic Impact on", params$metric_name),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else paste0(
-      "Estimated effect at each period relative to program start.\n",
-      "Flat, near-zero points before the line support a credible comparison; ",
-      "the period before start is fixed at 0."),
-    x = if (nzchar(params$x_label)) params$x_label else "Periods relative to program start (0 = first treated period)",
-    y = if (nzchar(params$y_label)) params$y_label else paste("Effect on", params$metric_name),
-    caption = params$source_note
-  )
+# Thin wrapper: map the YAML params into viz_event_study() and print the ggplot
+# it returns. Empty-string text params keep the auto-generated defaults.
+viz_event_study(
+  data           = raw_data,
+  unit_var       = params$unit_var,
+  time_var       = params$time_var,
+  event_time_var = params$event_time_var,
+  treat_var      = params$treat_var,
+  outcome_var    = params$outcome_var,
+  ref_period     = params$ref_period,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  y_label        = params$y_label,
+  source_note    = params$source_note
+)
 ```

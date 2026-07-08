@@ -59,116 +59,33 @@ library(tidyverse)
 library(lubridate)
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers and values whitespace-scrubbed) and validate YAML params
+# Load data (headers and values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_deviation() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# Works on row-level microdata (pre-aggregates to entity means) AND on data
-# that is already one-row-per-entity. Time filter understands plain years,
-# dates, and raw timestamps alike.
-# ==============================================================================
-d <- raw_data
+# Build the plot object now so the chunk below can size fig.height from the
+# number of entities it actually contains (p$data is the deviation frame).
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-# 1. Time filter (optional): build a comparable key from whatever the time
-#    column contains — "2025", "2025-11-01", or "2025-11-01T04:36:41Z"
-if (nzchar(params$time_var) && nzchar(as.character(params$filter_time))) {
-  time_raw <- d[[params$time_var]]
-  as_dates <- cerp_parse_date(time_raw, quiet = TRUE)
-  time_key <- if (mean(!is.na(as_dates)) > 0.8) {
-    as.character(year(as_dates))            # date-like column -> compare by year
-  } else {
-    str_squish(as.character(time_raw))      # plain years/labels -> compare as text
-  }
-  d <- d %>% filter(time_key == str_squish(as.character(params$filter_time)))
-
-  if (nrow(d) == 0) stop(
-    "No rows remain after filtering '", params$time_var, "' to '",
-    params$filter_time, "'. Values present in the data: ",
-    paste(sort(unique(time_key)), collapse = ", ")
-  )
-}
-
-# 2. Pre-aggregate: one summary value per entity (mean of all its rows).
-#    Harmless when data is already one-row-per-entity.
-agg <- d %>%
-  mutate(
-    Entity = str_to_title(str_squish(as.character(.data[[params$entity_var]]))),
-    Value  = cerp_numeric(.data[[params$value_var]], params$value_var)
-  ) %>%
-  drop_na(Entity, Value) %>%
-  group_by(Entity) %>%
-  summarize(Value = mean(Value), n_obs = n(), .groups = "drop")
-
-# 3. Resolve the baseline: fixed policy target, or the grand mean
-use_mean_baseline <- identical(tolower(as.character(params$baseline_target)), "mean")
-target <- if (use_mean_baseline) mean(agg$Value) else as.numeric(params$baseline_target)
-
-baseline_text <- if (use_mean_baseline) {
-  paste0("the average across all ", nrow(agg), " entities (",
-         round(target, 1), ")")
-} else {
-  paste0("the target of ", round(target, 1))
-}
-
-# 4. Deviations, sorted so the biggest laggard sits at the bottom
-plot_data <- agg %>%
-  mutate(
-    Entity_Label = str_wrap(Entity, width = 18),
-    Deviation = Value - target,
-    Performance = ifelse(Deviation >= 0, "Above baseline", "Below baseline")
-  ) %>%
-  arrange(Deviation) %>%
-  mutate(Entity_Label = factor(Entity_Label, levels = unique(Entity_Label)))
+p <- viz_deviation(
+  data            = raw_data,
+  entity_var      = params$entity_var,
+  time_var        = params$time_var,
+  filter_time     = params$filter_time,
+  value_var       = params$value_var,
+  baseline_target = params$baseline_target,
+  metric_name     = params$metric_name,
+  chart_title     = params$chart_title,
+  chart_subtitle  = params$chart_subtitle,
+  x_label         = params$x_label,
+  y_label         = params$y_label,
+  source_note     = params$source_note
+)
 ```
 
 
-```{r plot-deviation, fig.height=max(4, 1 + 0.45 * nrow(plot_data))}
-source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
-
-perf_colors <- c(
-  "Above baseline" = unname(cerp_cols["primary"]),
-  "Below baseline" = unname(cerp_cols["accent"])
-)
-
-ggplot(plot_data, aes(x = Deviation, y = Entity_Label, fill = Performance)) +
-
-  geom_col(width = 0.7) +
-
-  # Direct labels: the exact +/- gap at the end of each bar
-  geom_text(
-    aes(
-      label = ifelse(Deviation > 0,
-                     paste0("+", round(Deviation, 1)),
-                     round(Deviation, 1)),
-      hjust = ifelse(Deviation > 0, -0.25, 1.25)
-    ),
-    fontface = "bold", size = 3.4, family = cerp_font_caption,
-    color = cerp_cols[["text"]]
-  ) +
-
-  # The baseline anchor
-  geom_vline(xintercept = 0, color = cerp_cols[["text"]], linewidth = 0.9) +
-
-  scale_fill_manual(values = perf_colors) +
-  scale_x_continuous(expand = expansion(mult = c(0.18, 0.18))) +
-
-  theme_cerp() +
-
-  # Direct labels replace the x-axis entirely
-  theme(
-    panel.grid.major.y = element_blank(),
-    axis.text.x = element_blank(),
-    axis.text.y = element_text(size = 11, face = "bold",
-                               color = cerp_cols[["text"]])
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste0(params$metric_name, ": Who Is Ahead, Who Is Behind")),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0( "Gap relative to ", baseline_text, if (nzchar(params$time_var) && nzchar(as.character(params$filter_time))) paste0(", ", params$filter_time) else "", "." )),
-    x = if (nzchar(params$x_label)) params$x_label else ("Deviation from baseline"),
-    y = if (nzchar(params$y_label)) params$y_label else (NULL),
-    caption = params$source_note
-  )
+```{r plot-deviation, fig.height=max(4, 1 + 0.45 * nrow(p$data))}
+p
 ```

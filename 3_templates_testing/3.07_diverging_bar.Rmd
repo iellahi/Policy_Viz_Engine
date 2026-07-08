@@ -2,7 +2,7 @@
 title: "`r params$report_title`"
 author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
@@ -10,11 +10,11 @@ output:
 params:
   # Master Data Path
   data_path: !r here::here("1_data", "master_micro_survey.csv")
-  
+
   # Variables
   entity_var: "district"
   response_var: "parent_trust"
-  
+
   # Policy-Facing Labels
   metric_name: "Trust in Local School Data"
 
@@ -36,7 +36,7 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "#FAF9F6"),
   fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 5, 
+  fig.height = 5,
   fig.retina = 3
 )
 ```
@@ -50,101 +50,26 @@ library(tidyverse)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_diverging() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-plot_data <- raw_data %>%
-  # 1. Safely drop NAs only for required variables
-  drop_na(!!sym(params$entity_var), !!sym(params$response_var)) %>%
-  
-  # 2. Scrub strings and wrap long Entity labels (like long District names)
-  mutate(
-    Entity = str_wrap(str_to_title(str_trim(as.character(!!sym(params$entity_var)))), width = 15),
-    Clean_Resp = str_trim(as.character(!!sym(params$response_var))),
-    
-    # 3. Intelligently map messy Likert scale data into strict categories
-    Response = case_when(
-      str_detect(Clean_Resp, "(?i)Strongly Dis") ~ "Strongly Disagree",
-      str_detect(Clean_Resp, "(?i)Dis") & !str_detect(Clean_Resp, "(?i)Strongly") ~ "Disagree",
-      str_detect(Clean_Resp, "(?i)Strongly Ag") ~ "Strongly Agree",
-      str_detect(Clean_Resp, "(?i)Ag") & !str_detect(Clean_Resp, "(?i)Strongly") ~ "Agree",
-      TRUE ~ NA_character_ # Flag unrecognizable garbage data as NA
-    )
-  ) %>%
-  
-  # Drop any garbage data that couldn't be mapped to our 4 categories
-  drop_na(Response) %>%
-  
-  # 4. Calculate counts and percentages per Entity
-  count(Entity, Response) %>%
-  group_by(Entity) %>%
-  mutate(
-    Pct = n / sum(n),
-    # Flip the sign for negative sentiments so they plot to the left of zero
-    Plot_Pct = ifelse(str_detect(Response, "Disagree"), -Pct, Pct),
-    
-    # Lock factor levels so they stack outward from the center zero-line correctly
-    Response = factor(Response, levels = c("Strongly Disagree", "Disagree", "Agree", "Strongly Agree"))
-  ) %>%
-  ungroup()
-
-# 5. Calculate the net positive score to sort the Y-axis dynamically
-sort_order <- plot_data %>%
-  filter(str_detect(Response, "Agree")) %>%
-  group_by(Entity) %>%
-  summarize(Net_Positive = sum(Pct, na.rm = TRUE), .groups = "drop") %>%
-  arrange(Net_Positive) %>%
-  pull(Entity)
-
-plot_data <- plot_data %>%
-  mutate(Entity = factor(Entity, levels = sort_order))
 ```
 
 
 ```{r plot-diverging}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-ggplot(plot_data, aes(x = Plot_Pct, y = Entity, fill = Response)) +
-  
-  # Draw the stacked bars
-  geom_col(width = 0.6) +
-  
-  # Drop a heavy vertical line exactly at zero to anchor the eye
-  geom_vline(xintercept = 0, color = cerp_cols[["text"]], linewidth = 1) +
-  
-  # Use a high-contrast diverging color palette. 
-  scale_fill_manual(values = c(
-    "Strongly Disagree" = "#e07a5f", # Terracotta (strong negative)
-    "Disagree"          = "#f2cc8f", # Sand (mild negative)
-    "Agree"             = "#a8dadc", # Pale teal (mild positive)
-    "Strongly Agree"    = "#457b9d"  # Steel blue (strong positive)
-  )) +
-  
-  # Format the X-axis as percentages and strip away the negative signs 
-  scale_x_continuous(
-    labels = function(x) scales::percent(abs(x), accuracy = 1),
-    limits = c(-1, 1) # Lock the scale from -100% to +100%
-  ) +
-  
-  theme_cerp() +
-  
-  theme(
-    legend.position = "top",
-    legend.title = element_blank(),
-    legend.text = element_text(size = 10, face = "bold"),
-    panel.grid.major.y = element_blank(), # Remove horizontal lines to keep bars clean
-    axis.text.y = element_text(size = 12, face = "bold")
-  ) +
-  
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Household Sentiment:", params$metric_name)),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("Percentage of respondents leaning negative (left) vs. positive (right)."),
-    x = if (nzchar(params$x_label)) params$x_label else ("Percentage of Respondents"),
-    y = if (nzchar(params$y_label)) params$y_label else (NULL),
-    caption = params$source_note
-  )
+viz_diverging(
+  data           = raw_data,
+  entity_var     = params$entity_var,
+  response_var   = params$response_var,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  y_label        = params$y_label,
+  source_note    = params$source_note
+)
 ```

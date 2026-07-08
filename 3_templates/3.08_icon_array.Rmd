@@ -2,7 +2,7 @@
 title: "`r params$report_title`"
 author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
@@ -13,13 +13,13 @@ params:
   combined_mode: false
   # Master Data Path
   data_path: !r here::here("1_data", "master_micro_survey.csv")
-  
+
   # Variables
   category_var: "attrition_status"
-  
+
   # Array Math
   scale_factor: 50   # 1 dot = X units. Adjust this so the total number of dots on screen is around 100.
-  
+
   # Policy-Facing Labels
   unit_name: "Households"
   metric_name: "Survey Completion & Attrition"
@@ -40,7 +40,7 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "#FAF9F6"),
   fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 8,
-  fig.height = 6, 
+  fig.height = 6,
   fig.retina = 3
 )
 ```
@@ -54,93 +54,27 @@ library(tidyverse)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_icon_array() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-# 1. Calculate the raw counts directly from the microdata
-array_data <- raw_data %>%
-  # Drop missing statuses
-  drop_na(!!sym(params$category_var)) %>%
-  
-  # Scrub text and group messy data into strict attrition categories
-  mutate(
-    Clean_Status = str_trim(as.character(!!sym(params$category_var))),
-    Category = case_when(
-      str_detect(Clean_Status, "(?i)Survey|Complete|Success") ~ "Surveyed",
-      str_detect(Clean_Status, "(?i)Refuse|Deny") ~ "Refused",
-      str_detect(Clean_Status, "(?i)Not Reach|Unreach|Miss|Absent") ~ "Not Reached",
-      TRUE ~ "Other"
-    )
-  ) %>%
-  
-  # Aggregate the counts
-  count(Category, name = "count") %>%
-  
-  # 2. Calculate the number of dots needed based on the YAML scale factor
-  mutate(dots_needed = round(count / params$scale_factor)) %>%
-  # Drop categories that round down to 0 dots
-  filter(dots_needed > 0)
-
-# 3. "Uncount" the data: Copies each row N times so we have exactly one row per dot
-dot_df <- array_data %>%
-  uncount(dots_needed) %>%
-  mutate(id = row_number())
-
-# 4. Calculate grid dimensions dynamically to make it a rough square
-total_dots <- nrow(dot_df)
-cols <- ceiling(sqrt(total_dots))
-
-# 5. Assign X and Y coordinates to construct the neat grid
-dot_df <- dot_df %>%
-  mutate(
-    x = (id - 1) %% cols + 1,
-    y = ceiling(id / cols),
-    # Lock the factor levels so the most important categories plot and color correctly
-    Category = factor(Category, levels = c("Surveyed", "Refused", "Not Reached", "Other"))
-  )
 ```
 
 
 ```{r plot-icon-array}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-ggplot(dot_df, aes(x = x, y = y, color = Category)) +
-  
-  # Draw the "Icons" (thick circles). 
-  # Using shape 16 (solid dot) with size 5 creates a clean, readable dot matrix.
-  geom_point(size = 6, shape = 16, alpha = 0.9) +
-  
-  # coord_equal prevents the dots from stretching into ovals
-  coord_equal() +
-  
-  # Use high-contrast colors to differentiate success from attrition
-  scale_color_manual(values = c(
-    "Surveyed"    = unname(cerp_cols["primary"]),  # Dark Blue/CERP Primary
-    "Refused"     = "#E69F00",                     # Orange/Warning
-    "Not Reached" = unname(cerp_cols["neutral"]),  # Grey
-    "Other"       = "#B0B0B0"                      # Light Grey
-  )) +
-  
-  theme_cerp() +
-  
-  # Strip all axes, gridlines, and backgrounds to leave only the dots floating in space
-  theme(
-    axis.text = element_blank(),
-    axis.title = element_blank(),
-    axis.ticks = element_blank(),
-    panel.grid = element_blank(),
-    legend.position = "top",
-    legend.title = element_blank(),
-    legend.text = element_text(size = 11, face = "bold")
-  ) +
-  
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (params$metric_name),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0("Each dot represents ", params$scale_factor, " ", tolower(params$unit_name), ".")),
-    caption = params$source_note
-  )
+# Thin wrapper: map the YAML params into viz_icon_array() and print the ggplot it
+# returns. Empty-string text params keep the auto-generated defaults.
+viz_icon_array(
+  data           = raw_data,
+  category_var   = params$category_var,
+  scale_factor   = params$scale_factor,
+  unit_name      = params$unit_name,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  source_note    = params$source_note
+)
 ```

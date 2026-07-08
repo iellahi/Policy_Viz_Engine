@@ -72,103 +72,29 @@ if (params$aggregate %in% c("none", "mean", "sum")) {
 }
 cerp_validate(raw_data, required)
 
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-base <- raw_data %>%
-  drop_na(all_of(c(params$row_var, params$col_var))) %>%
-  mutate(RowCat = as.character(.data[[params$row_var]]),
-         ColCat = as.character(.data[[params$col_var]]))
+# Build the plot object now so the chunk below can size fig.height from the
+# number of rows it actually contains (nlevels of p$data$RowCat). All cell
+# aggregation, ordering + labels live in viz_heatmap_matrix().
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-# Collapse to exactly one value per (row, col) cell
-cell <- switch(params$aggregate,
-  "count" = base %>% count(RowCat, ColCat, name = "Value"),
-  "mean"  = base %>%
-    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
-    group_by(RowCat, ColCat) %>% summarize(Value = mean(V, na.rm = TRUE), .groups = "drop"),
-  "sum"   = base %>%
-    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
-    group_by(RowCat, ColCat) %>% summarize(Value = sum(V, na.rm = TRUE), .groups = "drop"),
-  "none"  = {
-    if (anyDuplicated(base[c("RowCat", "ColCat")]) > 0) stop(
-      "Multiple rows share the same (", params$row_var, ", ", params$col_var,
-      ") cell, but aggregate is 'none'. Set 'aggregate' to 'count', 'mean', ",
-      "or 'sum' so the template knows how to combine them.", call. = FALSE)
-    base %>% transmute(RowCat, ColCat,
-                       Value = cerp_numeric(.data[[params$value_var]], params$value_var))
-  },
-  stop("Unknown aggregate option: '", params$aggregate,
-       "'. Use 'none', 'count', 'mean', or 'sum'.", call. = FALSE)
+p <- viz_heatmap_matrix(
+  data           = raw_data,
+  row_var        = params$row_var,
+  col_var        = params$col_var,
+  value_var      = params$value_var,
+  aggregate      = params$aggregate,
+  show_values    = params$show_values,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  y_label        = params$y_label,
+  source_note    = params$source_note
 )
-
-# Fill the full grid so empty cells appear (grey) rather than vanish
-plot_data <- cell %>% complete(RowCat, ColCat)
-
-# Order columns numerically when they are numbers (e.g. years), else keep as-is;
-# order rows by their mean value so the strongest categories sit together.
-col_levels <- unique(plot_data$ColCat)
-if (!any(is.na(suppressWarnings(as.numeric(col_levels))))) {
-  col_levels <- col_levels[order(as.numeric(col_levels))]
-}
-row_order <- plot_data %>% group_by(RowCat) %>%
-  summarize(m = mean(Value, na.rm = TRUE), .groups = "drop") %>% arrange(m) %>% pull(RowCat)
-
-plot_data <- plot_data %>%
-  mutate(ColCat = factor(ColCat, levels = col_levels),
-         RowCat = factor(RowCat, levels = row_order))
-
-n_rows <- nlevels(plot_data$RowCat)
-val_digits <- if (params$aggregate == "mean") 1 else 0
-mid_val <- mean(range(plot_data$Value, na.rm = TRUE))
 ```
 
 
-```{r plot-heatmap-matrix, fig.height=max(4, 0.55 * n_rows + 2.5)}
-source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
-
-p <- ggplot(plot_data, aes(x = ColCat, y = RowCat, fill = Value)) +
-
-  geom_tile(color = cerp_cols[["bg"]], linewidth = 0.8) +
-
-  # Sequential ramp: pale box tint (low) -> steel blue (high); empty cells grey
-  scale_fill_gradient(
-    low = unname(cerp_cols["box"]),
-    high = unname(cerp_cols["primary"]),
-    na.value = "#e6e2d9",
-    name = params$metric_name
-  ) +
-
-  theme_cerp() +
-
-  theme(
-    legend.position = "top",
-    legend.justification = "left",
-    legend.key.width = unit(1.8, "cm"),
-    legend.key.height = unit(0.35, "cm"),
-    legend.title = element_text(family = cerp_font_caption, size = 10,
-                                color = cerp_cols[["subtle"]]),
-    panel.grid = element_blank(),
-    axis.text.y = element_text(face = "bold", color = cerp_cols[["text"]])
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else paste("Category Matrix:", params$metric_name),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else "Each cell is shaded by value; darker means higher. Grey cells have no data.",
-    x = if (nzchar(params$x_label)) params$x_label else str_to_title(params$col_var),
-    y = if (nzchar(params$y_label)) params$y_label else str_to_title(params$row_var),
-    caption = params$source_note
-  )
-
-# Optional in-cell value labels, with contrast-aware text color
-if (isTRUE(params$show_values)) {
-  p <- p + geom_text(
-    aes(label = ifelse(is.na(Value), "",
-                       formatC(Value, format = "f", digits = val_digits)),
-        color = Value > mid_val),
-    family = cerp_font_caption, size = 3.4, show.legend = FALSE) +
-    scale_color_manual(values = c("FALSE" = cerp_cols[["text"]], "TRUE" = "#FFFFFF"),
-                       na.value = cerp_cols[["subtle"]])
-}
-
+```{r plot-heatmap-matrix, fig.height=max(4, 0.55 * nlevels(p$data$RowCat) + 2.5)}
 p
 ```

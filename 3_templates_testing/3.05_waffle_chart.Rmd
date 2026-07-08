@@ -50,101 +50,25 @@ cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>"
 library(tidyverse)
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers and values whitespace-scrubbed) and validate YAML params
+# Load data (headers and values whitespace-scrubbed) and validate YAML params.
+# All category counting, rounding, coloring + plotting now lives in viz_waffle()
+# (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# Handles ANY number of categories (binary, ternary triage, or more).
-# ==============================================================================
-# 1. Count each category of the status variable
-cat_counts <- raw_data %>%
-  filter(!is.na(.data[[params$status_var]]),
-         nzchar(as.character(.data[[params$status_var]]))) %>%
-  count(Category = as.character(.data[[params$status_var]]), name = "n")
-
-if (nrow(cat_counts) == 0) stop("No non-missing values found in '", params$status_var, "'.")
-if (nrow(cat_counts) > 8) stop(
-  "'", params$status_var, "' has ", nrow(cat_counts),
-  " distinct categories — too many for a readable waffle chart. ",
-  "Choose a variable with 8 or fewer categories."
-)
-
-# 2. Resolve category order: YAML-specified, else by frequency
-if (nzchar(params$category_order)) {
-  wanted <- str_squish(str_split(params$category_order, ",")[[1]])
-  lvls <- c(intersect(wanted, cat_counts$Category),
-            setdiff(cat_counts$Category, wanted))
-} else {
-  lvls <- cat_counts %>% arrange(desc(n)) %>% pull(Category)
-}
-
-# 3. Exact percentages + largest-remainder rounding so squares sum to exactly 100
-cat_counts <- cat_counts %>%
-  mutate(Category = factor(Category, levels = lvls)) %>%
-  arrange(Category) %>%
-  mutate(pct_exact = 100 * n / sum(n))
-
-squares <- floor(cat_counts$pct_exact)
-leftover <- 100 - sum(squares)
-if (leftover > 0) {
-  top_up <- order(cat_counts$pct_exact - squares, decreasing = TRUE)[seq_len(leftover)]
-  squares[top_up] <- squares[top_up] + 1
-}
-cat_counts$squares <- squares
-
-# 4. Legend labels carry the exact share, so the chart needs no axis at all
-cat_counts <- cat_counts %>%
-  mutate(Label = paste0(Category, " — ", round(pct_exact), "%"))
-
-# 5. Build the 10x10 grid, filled bottom-to-top, left-to-right
-waffle_data <- expand.grid(x = 1:10, y = 1:10) %>%
-  arrange(y, x) %>%
-  mutate(Label = factor(
-    rep(cat_counts$Label, times = cat_counts$squares),
-    levels = cat_counts$Label
-  ))
-
-# 6. Colors: semantic if the categories carry universal meaning
-#    (Green/Yellow/Red triage, Yes/No, risk levels), otherwise house palette
-source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
-semantic <- cerp_match_semantic(as.character(cat_counts$Category))
-waffle_colors <- setNames(
-  if (!is.null(semantic)) unname(semantic) else cerp_fill_n(nrow(cat_counts)),
-  cat_counts$Label
-)
-
-# 7. Headline for the subtitle: lead with the largest category
-top_cat <- cat_counts %>% slice_max(pct_exact, n = 1, with_ties = FALSE)
 ```
 
 
 ```{r plot-waffle}
-ggplot(waffle_data, aes(x = x, y = y, fill = Label)) +
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-  # Squares with a background-colored border for the classic waffle separation
-  geom_tile(color = cerp_cols[["bg"]], linewidth = 2) +
-
-  # Lock the aspect ratio so squares stay square
-  coord_equal() +
-
-  scale_fill_manual(values = waffle_colors) +
-
-  theme_cerp() +
-
-  # Strip all axes and grids — the legend percentages tell the whole story
-  theme(
-    axis.text = element_blank(),
-    axis.title = element_blank(),
-    panel.grid = element_blank(),
-    legend.position = "top",
-    legend.justification = "left"
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (params$metric_name),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0( "Each square is 1% of the sample (N = ", scales::comma(sum(cat_counts$n)), "). ", top_cat$Category, " accounts for ", round(top_cat$pct_exact), "%." )),
-    caption = params$source_note
-  )
+viz_waffle(
+  data           = raw_data,
+  status_var     = params$status_var,
+  category_order = params$category_order,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  source_note    = params$source_note
+)
 ```

@@ -2,7 +2,7 @@
 title: "`r params$report_title`"
 author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
@@ -13,11 +13,11 @@ params:
   combined_mode: false
   # Master Data Path
   data_path: !r here::here("1_data", "master_micro_survey.csv")
-  
+
   # Variables (Using Endline Scores to show final impact)
   outcome_var: "endline_score"
   group_var: "treatment_group"
-  
+
   # Policy-Facing Labels
   treatment_label: "Received Program"
   control_label: "Comparison Group"
@@ -41,7 +41,7 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "#FAF9F6"),
   fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 3.5, 
+  fig.height = 3.5,
   fig.retina = 3
 )
 ```
@@ -55,87 +55,30 @@ library(tidyverse)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_forest() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-plot_data <- raw_data %>%
-  # 1. Safely drop NAs only for the required variables
-  drop_na(!!sym(params$outcome_var), !!sym(params$group_var)) %>%
-  
-  # 2. Scrub and standardize text inputs
-  mutate(
-    Clean_Group = str_to_title(str_trim(as.character(!!sym(params$group_var)))),
-    
-    # Intelligently map messy data to the clean Policy Labels defined in YAML
-    Group = case_when(
-      str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes|Received") ~ str_wrap(params$treatment_label, width = 20),
-      TRUE ~ str_wrap(params$control_label, width = 20)
-    )
-  ) %>%
-  
-  # 3. Group data to calculate statistics efficiently
-  group_by(Group) %>%
-  summarize(
-    Estimate = mean(!!sym(params$outcome_var), na.rm = TRUE),
-    SD = sd(!!sym(params$outcome_var), na.rm = TRUE),
-    N = n(),
-    .groups = "drop"
-  ) %>%
-  
-  # 4. Calculate Standard Error and 95% Confidence Intervals
-  mutate(
-    SE = SD / sqrt(N),
-    Lower_CI = Estimate - (1.96 * SE),
-    Upper_CI = Estimate + (1.96 * SE)
-  ) %>%
-  
-  # 5. Lock factor levels so the Treatment group always plots on top
-  mutate(
-    Group = factor(Group, levels = c(
-      str_wrap(params$treatment_label, width = 20), 
-      str_wrap(params$control_label, width = 20)
-    ))
-  )
 ```
 
 
 ```{r plot-effects}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-# Create a named color vector dynamically based on the wrapped YAML labels
-group_colors <- setNames(
-  c(unname(cerp_cols["primary"]), unname(cerp_cols["neutral"])), 
-  c(str_wrap(params$treatment_label, width = 20), str_wrap(params$control_label, width = 20))
+# Thin wrapper: map the YAML params into viz_forest() and print the ggplot it
+# returns. Empty-string text params keep the auto-generated defaults.
+viz_forest(
+  data            = raw_data,
+  outcome_var     = params$outcome_var,
+  group_var       = params$group_var,
+  treatment_label = params$treatment_label,
+  control_label   = params$control_label,
+  metric_name     = params$metric_name,
+  chart_title     = params$chart_title,
+  chart_subtitle  = params$chart_subtitle,
+  x_label         = params$x_label,
+  y_label         = params$y_label,
+  source_note     = params$source_note
 )
-
-ggplot(plot_data, aes(x = Estimate, y = Group, color = Group)) +
-  
-  # Draw the 95% Confidence Interval error bars
-  geom_errorbarh(aes(xmin = Lower_CI, xmax = Upper_CI), height = 0, linewidth = 2) +
-  
-  # Draw the point estimate (the average)
-  geom_point(size = 7) +
-  
-  # Map the colors explicitly so treatment is primary and control is neutral
-  scale_color_manual(values = group_colors) +
-  
-  theme_cerp() +
-  
-  # Remove the legend entirely and clean axes
-  theme(
-    legend.position = "none",
-    axis.text.y = element_text(size = 12, face = "bold")
-  ) +
-  
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Estimated Impact on", params$metric_name)),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("Points represent the average outcome. Lines represent the 95% confidence interval.\nIf the horizontal lines do not overlap, the difference is statistically significant."),
-    x = if (nzchar(params$x_label)) params$x_label else (params$metric_name),
-    y = if (nzchar(params$y_label)) params$y_label else (NULL),
-    caption = params$source_note
-  )
 ```

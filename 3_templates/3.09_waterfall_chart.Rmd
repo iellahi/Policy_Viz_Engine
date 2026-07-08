@@ -2,7 +2,7 @@
 title: "`r params$report_title`"
 author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
@@ -13,11 +13,11 @@ params:
   combined_mode: false
   # Master Data Path
   data_path: !r here::here("1_data", "master_budget_pipeline.csv")
-  
+
   # Variables
   category_var: "budget_stage"
   value_var: "budget_amount"
-  
+
   # Policy-Facing Labels
   final_column_name: "Total Deployed"
   metric_name: "Education Funds Pipeline (PKR)"
@@ -40,7 +40,7 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "#FAF9F6"),
   fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 5.5, 
+  fig.height = 5.5,
   fig.retina = 3
 )
 ```
@@ -54,118 +54,29 @@ library(tidyverse)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_waterfall() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-# 1. Standardize the data and drop NAs
-clean_data <- raw_data %>%
-  drop_na(!!sym(params$category_var), !!sym(params$value_var)) %>%
-  mutate(
-    Category = str_wrap(str_to_title(str_trim(as.character(!!sym(params$category_var)))), width = 15),
-    Value = as.numeric(!!sym(params$value_var))
-  )
-
-# 2. Intelligent Summary Detection
-# Checks if the user already included the final total in the CSV. 
-# If yes, we strip it out so we can build the mathematical anchors perfectly.
-n_rows <- nrow(clean_data)
-if (n_rows > 1) {
-  sum_previous <- sum(clean_data$Value[1:(n_rows-1)], na.rm = TRUE)
-  last_val <- clean_data$Value[n_rows]
-  
-  if (round(abs(sum_previous)) == round(abs(last_val))) {
-    clean_data <- clean_data[1:(n_rows-1), ]
-  }
-}
-
-# 3. Calculate the true final landing total
-final_total <- sum(clean_data$Value, na.rm = TRUE)
-
-# 4. Build the Waterfall coordinates
-plot_data <- clean_data %>%
-  # Append our calculated final row
-  bind_rows(tibble(Category = params$final_column_name, Value = final_total)) %>%
-  mutate(
-    id = row_number(),
-    # Categorize blocks to assign specific brand colors later
-    Type = case_when(
-      id == 1 ~ "Start",
-      id == n() ~ "End",
-      Value > 0 ~ "Addition",
-      TRUE ~ "Deduction"
-    ),
-    # Lock the factor levels so the pipeline flows left-to-right correctly
-    Category = factor(Category, levels = Category),
-    
-    # Calculate the top and bottom coordinates for the floating bars
-    ymax = cumsum(Value),
-    ymin = lag(ymax, default = 0)
-  ) %>%
-  # Correct the coordinates for the Start and End blocks so they are anchored to zero
-  mutate(
-    ymin = if_else(Type %in% c("Start", "End"), 0, ymin),
-    ymax = if_else(Type == "End", final_total, ymax),
-    
-    # Coordinates for drawing the dashed connecting lines between bars
-    next_id = id + 1,
-    next_ymax = ymax
-  )
 ```
 
 
 ```{r plot-waterfall}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-ggplot(plot_data, aes(fill = Type)) +
-  
-  # Draw the floating rectangles
-  geom_rect(aes(xmin = id - 0.4, xmax = id + 0.4, ymin = ymin, ymax = ymax), 
-            color = "white", linewidth = 0.5) +
-  
-  # Draw the classic dashed waterfall connecting lines
-  geom_segment(data = plot_data %>% filter(Type != "End"),
-               aes(x = id + 0.4, xend = next_id - 0.4, y = ymax, yend = ymax), 
-               linetype = "dashed", color = cerp_cols[["text"]]) +
-  
-  # Add direct text labels to the bars automatically formatting massive numbers
-  geom_text(aes(x = id, 
-                y = if_else(Type == "Deduction", ymin - (ymin - ymax)/2, ymax + (ymax - ymin)/2), 
-                label = scales::comma(abs(Value))), 
-            vjust = 0.5, fontface = "bold", size = 4, color = "black") +
-  
-  # Map policy-friendly colors: CERP Primary for anchors, Red for loss, Blue for gains
-  scale_fill_manual(values = c(
-    "Start"     = unname(cerp_cols["primary"]),
-    "End"       = unname(cerp_cols["primary"]),
-    "Deduction" = "#e07a5f",  # Terracotta (loss)
-    "Addition"  = "#a8dadc"   # Pale teal (gain)
-  )) +
-  
-  # Format the Y-axis to handle large financial numbers cleanly
-  scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
-  
-  # Replace the numeric X-axis with our actual category names
-  scale_x_continuous(breaks = plot_data$id, labels = plot_data$Category) +
-  
-  theme_cerp() +
-  
-  # Strip unnecessary background grid elements and the legend
-  theme(
-    legend.position = "none",
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    axis.text.x = element_text(angle = 0, size = 11, face = "bold")
-  ) +
-  
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Pipeline Breakdown:", params$metric_name)),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("Tracking total allocations against systemic reductions to determine final delivery."),
-    x = if (nzchar(params$x_label)) params$x_label else (NULL),
-    y = if (nzchar(params$y_label)) params$y_label else (params$metric_name),
-    caption = params$source_note
-  )
+# Thin wrapper: map the YAML params into viz_waterfall() and print the ggplot it
+# returns. Empty-string text params keep the auto-generated defaults.
+viz_waterfall(
+  data              = raw_data,
+  category_var      = params$category_var,
+  value_var         = params$value_var,
+  final_column_name = params$final_column_name,
+  metric_name       = params$metric_name,
+  chart_title       = params$chart_title,
+  chart_subtitle    = params$chart_subtitle,
+  x_label           = params$x_label,
+  y_label           = params$y_label,
+  source_note       = params$source_note
+)
 ```

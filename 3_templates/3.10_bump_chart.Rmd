@@ -2,7 +2,7 @@
 title: "`r params$report_title`"
 author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
@@ -13,12 +13,12 @@ params:
   combined_mode: false
   # Master Data Path
   data_path: !r here::here("1_data", "master_macro_panel.csv")
-  
+
   # Variables
   entity_var: "district"
   time_var: "year"
   value_var: "literacy_rate"
-  
+
   # Policy Narrative Focus
   highlight_entity: "Lahore"
   metric_name: "Literacy Rank"
@@ -41,7 +41,7 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "#FAF9F6"),
   fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 6, 
+  fig.height = 6,
   fig.retina = 3
 )
 ```
@@ -61,120 +61,30 @@ library(ggrepel)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_bump() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-plot_data <- raw_data %>%
-  # 1. Safely drop NAs only for the specific variables required
-  drop_na(!!sym(params$time_var), !!sym(params$entity_var), !!sym(params$value_var)) %>%
-  
-  # 2. Scrub and wrap Entity names, and force Time/Value to numeric types
-  mutate(
-    Entity_Clean = str_to_title(str_trim(as.character(!!sym(params$entity_var)))),
-    Entity = str_wrap(Entity_Clean, width = 15),
-    Time = as.numeric(!!sym(params$time_var)),
-    Value = as.numeric(!!sym(params$value_var))
-  ) %>%
-  
-  # 3. Group by year to establish who is in 1st, 2nd, 3rd place, etc.
-  group_by(Time) %>%
-  mutate(
-    # Strict tie-breaker for vertical spacing on the chart
-    Rank = row_number(desc(Value)),
-    # Mathematical detection: Is this exact score duplicated in this year?
-    is_tied = duplicated(Value) | duplicated(Value, fromLast = TRUE)
-  ) %>%
-  ungroup() %>%
-  
-  # 4. Create safe styling rules and dynamic text labels
-  mutate(
-    target_clean = str_to_title(str_trim(params$highlight_entity)),
-    is_highlight = ifelse(Entity_Clean == target_clean, TRUE, FALSE),
-    # If tied, append an asterisk to the name
-    Display_Name = ifelse(is_tied, paste0(Entity, "*"), Entity)
-  )
-
-# 5. Isolate the starting and ending points to draw direct text labels
-start_labels <- plot_data %>% filter(Time == min(Time))
-end_labels <- plot_data %>% filter(Time == max(Time))
-
-# 6. Dynamically generate the caption only if a tie actually exists in the dataset
-caption_text <- ifelse(
-  any(plot_data$is_tied), 
-  "Generated via CERP Analytics Template | * Indicates a mathematical tie in score, rank forced for visibility.", 
-  "Generated via CERP Analytics Template"
-)
 ```
 
 
 ```{r plot-bump}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-ggplot(plot_data, aes(x = Time, y = Rank, group = Entity)) +
-  
-  # Draw the trajectory lines
-  geom_line(aes(
-    color = is_highlight, 
-    linewidth = is_highlight, 
-    alpha = is_highlight
-  )) +
-  
-  # Draw the specific rank points for each year
-  geom_point(aes(
-    color = is_highlight, 
-    size = is_highlight
-  )) +
-  
-  # Left-side labels (Start) — repelled vertically so tied ranks never overprint
-  ggrepel::geom_text_repel(
-    data = start_labels, aes(label = Display_Name, color = is_highlight),
-    direction = "y", hjust = 1, nudge_x = -0.15,
-    fontface = "bold", size = 4, family = cerp_font_caption,
-    box.padding = 0.12, segment.color = "#b7c9d3", segment.size = 0.3, seed = 26
-  ) +
-
-  # Right-side labels (End) — same protection
-  ggrepel::geom_text_repel(
-    data = end_labels, aes(label = Display_Name, color = is_highlight),
-    direction = "y", hjust = 0, nudge_x = 0.15,
-    fontface = "bold", size = 4, family = cerp_font_caption,
-    box.padding = 0.12, segment.color = "#b7c9d3", segment.size = 0.3, seed = 26
-  ) +
-  
-  # Apply conditional styling
-  scale_color_manual(values = c("TRUE" = unname(cerp_cols["primary"]), "FALSE" = "#B0B0B0")) +
-  scale_linewidth_manual(values = c("TRUE" = 2.5, "FALSE" = 1)) +
-  scale_alpha_manual(values = c("TRUE" = 1, "FALSE" = 0.5)) +
-  scale_size_manual(values = c("TRUE" = 5, "FALSE" = 3)) +
-  
-  # Reverse the Y-axis so Rank #1 is at the top of the chart
-  scale_y_reverse(breaks = 1:max(plot_data$Rank)) +
-  
-  # FIX: Expanded the X-axis margins (40% left, 20% right) to prevent long names from clipping
-  scale_x_continuous(breaks = unique(plot_data$Time), 
-                     expand = expansion(mult = c(0.4, 0.2))) +
-  
-  theme_cerp() +
-  
-  # Strip everything unnecessary from the plot
-  theme(
-    legend.position = "none",
-    panel.grid.minor = element_blank(),
-    panel.grid.major.x = element_blank(),
-    axis.text.y = element_text(size = 14, face = "bold", color = cerp_cols[["text"]]),
-    axis.ticks.y = element_blank(),
-    axis.line.y = element_blank()
-  ) +
-  
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste(params$metric_name, "Trajectory")),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste("Tracking regional shifts over time. Highlighting the performance of", params$highlight_entity, ".")),
-    x = if (nzchar(params$x_label)) params$x_label else (NULL),
-    y = if (nzchar(params$y_label)) params$y_label else ("Rank"),
-    caption = params$source_note
-  )
+# Thin wrapper: map the YAML params into viz_bump() and print the ggplot it
+# returns. Empty-string text params keep the auto-generated defaults.
+viz_bump(
+  data             = raw_data,
+  entity_var       = params$entity_var,
+  time_var         = params$time_var,
+  value_var        = params$value_var,
+  highlight_entity = params$highlight_entity,
+  metric_name      = params$metric_name,
+  chart_title      = params$chart_title,
+  chart_subtitle   = params$chart_subtitle,
+  x_label          = params$x_label,
+  y_label          = params$y_label,
+  source_note      = params$source_note
+)
 ```

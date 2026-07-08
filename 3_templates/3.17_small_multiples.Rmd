@@ -57,64 +57,33 @@ cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>"
 library(tidyverse)
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_small_multiples() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-plot_data <- raw_data %>%
-  drop_na(all_of(c(params$facet_var, params$x_var, params$y_var))) %>%
-  mutate(
-    Facet = as.character(.data[[params$facet_var]]),
-    X = cerp_numeric(.data[[params$x_var]], params$x_var),
-    Y = cerp_numeric(.data[[params$y_var]], params$y_var)
-  ) %>%
-  drop_na(X, Y) %>%
-  arrange(Facet, X)
+# Build the plot object now so the chunk below can size fig.height from the
+# number of facets it actually contains (derived from p$data$Facet, matching the
+# panel grid the function itself lays out).
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-# Faint "all groups" context layer drawn behind every panel: same data with the
-# facet column dropped so it is replicated across all facets.
-ghost <- plot_data %>% transmute(X, Y, gid = Facet)
-
-n_facets <- n_distinct(plot_data$Facet)
-n_col <- ceiling(sqrt(n_facets))
-facet_scales <- if (identical(params$scale_mode, "free")) "free_y" else "fixed"
+p <- viz_small_multiples(
+  data           = raw_data,
+  facet_var      = params$facet_var,
+  x_var          = params$x_var,
+  y_var          = params$y_var,
+  scale_mode     = params$scale_mode,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  y_label        = params$y_label,
+  source_note    = params$source_note
+)
 ```
 
 
-```{r plot-small-multiples, fig.height=max(4, 2.4 * ceiling(n_facets / n_col))}
-source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
-
-ggplot(plot_data, aes(x = X, y = Y)) +
-
-  # Context: every group's trend, faint, in each panel
-  geom_line(data = ghost, aes(group = gid), color = cerp_cols[["neutral"]],
-            alpha = 0.35, linewidth = 0.5) +
-
-  # Foreground: this panel's own series, highlighted
-  geom_line(color = cerp_cols[["primary"]], linewidth = 1) +
-  geom_point(color = cerp_cols[["primary"]], size = 1.6) +
-
-  facet_wrap(~ Facet, scales = facet_scales, ncol = n_col) +
-
-  scale_x_continuous(breaks = scales::breaks_pretty(n = 4)) +
-
-  theme_cerp() +
-
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.spacing = unit(0.9, "lines")
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else paste("Group Comparison:", params$metric_name),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else paste0(
-      "One panel per ", params$facet_var,
-      "; the highlighted line is that group, faint lines are all groups for context."),
-    x = if (nzchar(params$x_label)) params$x_label else str_to_title(params$x_var),
-    y = if (nzchar(params$y_label)) params$y_label else params$metric_name,
-    caption = params$source_note
-  )
+```{r plot-small-multiples, fig.height=max(4, 2.4 * ceiling(n_distinct(p$data$Facet) / ceiling(sqrt(n_distinct(p$data$Facet)))))}
+p
 ```

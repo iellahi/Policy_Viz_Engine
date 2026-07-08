@@ -66,7 +66,7 @@ if (!requireNamespace("sf", quietly = TRUE)) {
        "(sf also needs system GDAL/GEOS/PROJ).",
        call. = FALSE)
 }
-suppressMessages(library(sf))   # attach so dplyr's sf-aware join dispatches
+suppressMessages(library(sf))   # attach so geom_sf + st_as_sf dispatch
 
 # 1. Load the metric data (headers/values whitespace-scrubbed) and validate that
 #    every *_var param names a real DATA column.
@@ -96,92 +96,27 @@ if (file.exists(lookup_path)) {
                             show_col_types = FALSE, trim_ws = TRUE)
   names(lookup) <- stringr::str_squish(names(lookup))
 }
-
-# ==============================================================================
-# DISTRICT-NAME HARMONIZATION
-# Resolve messy data names -> canonical geometry names. Fails LOUDLY (with
-# closest-match suggestions) on any district it cannot place, so a map is never
-# silently drawn with a district missing.
-# ==============================================================================
-canonical <- as.character(geo[[params$geo_key]])
-prepped <- raw_data %>%
-  drop_na(all_of(c(params$region_var, params$value_var))) %>%
-  mutate(
-    Canon = cerp_harmonize(.data[[params$region_var]], canonical, lookup),
-    Value = cerp_numeric(.data[[params$value_var]], params$value_var)
-  ) %>%
-  # One value per district (mean guards against accidental duplicate rows).
-  group_by(Canon) %>%
-  summarize(Value = mean(Value, na.rm = TRUE), .groups = "drop")
-
-# 4. Attach the metric onto the geometry BY MATCH, not left_join(): a dplyr join
-#    can silently strip the sf class (dropping the drawable geometry) so the
-#    legend renders but the polygons come out blank. match() writes a plain
-#    column and never demotes the sf object. Unmatched districts stay NA -> grey.
-map_data <- geo
-map_data$Value <- prepped$Value[
-  match(as.character(map_data[[params$geo_key]]), prepped$Canon)]
-map_data <- sf::st_as_sf(map_data)   # belt-and-suspenders: guarantee sf class
-
-# 5. Quantile classing into readable bins (design ramp applied in the plot).
-vals <- map_data$Value[!is.na(map_data$Value)]
-n_bins <- max(2, min(params$n_bins, length(unique(vals))))
-breaks <- unique(quantile(vals, probs = seq(0, 1, length.out = n_bins + 1),
-                          na.rm = TRUE, type = 7))
-if (length(breaks) < 3) {                     # near-constant data: single class
-  map_data$Bin <- factor(ifelse(is.na(map_data$Value), NA,
-                                sprintf("%.0f", map_data$Value)))
-} else {
-  labs_bins <- paste0(round(head(breaks, -1)), "–", round(breaks[-1]))
-  map_data$Bin <- cut(map_data$Value, breaks = breaks, labels = labs_bins,
-                      include.lowest = TRUE)
-}
-n_missing <- sum(is.na(map_data$Value))
 ```
 
 
 ```{r plot-choropleth}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-# Sequential ramp: pale box tint (low) -> steel blue (high), Design.md palette.
-n_lev <- nlevels(map_data$Bin)
-ramp <- colorRampPalette(c(cerp_cols[["box"]], cerp_cols[["primary"]]))(max(1, n_lev))
-
-sub_default <- paste0(
-  "Darker shading means higher ", tolower(params$metric_name), ".",
-  if (n_missing > 0) paste0(" Grey districts have no data (", n_missing, ").") else ""
+# Thin wrapper: name harmonization, match-based attach, quantile binning + the
+# map itself all live in viz_choropleth(); the wrapper hands it the loaded
+# geometry and crosswalk. Empty-string text params keep the auto defaults.
+viz_choropleth(
+  data           = raw_data,
+  geo            = geo,
+  lookup         = lookup,
+  region_var     = params$region_var,
+  value_var      = params$value_var,
+  geo_key        = params$geo_key,
+  n_bins         = params$n_bins,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  source_note    = params$source_note
 )
-
-ggplot(map_data) +
-
-  geom_sf(aes(fill = Bin), color = cerp_cols[["bg"]], linewidth = 0.25) +
-
-  scale_fill_manual(
-    values = ramp,
-    na.value = "#e6e2d9",         # warm grey = "no data"
-    name = params$metric_name,
-    drop = FALSE,
-    guide = guide_legend(direction = "horizontal", nrow = 1,
-                         label.position = "bottom", keywidth = unit(1.4, "cm"))
-  ) +
-
-  coord_sf(expand = FALSE) +
-
-  theme_cerp() +
-
-  theme(
-    legend.position = "top",
-    legend.justification = "left",
-    legend.title = element_text(family = cerp_font_caption, size = 10,
-                                color = cerp_cols[["subtle"]]),
-    axis.text = element_blank(),
-    axis.title = element_blank(),
-    panel.grid = element_blank()
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else paste("District Map:", params$metric_name),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else sub_default,
-    caption = params$source_note
-  )
 ```

@@ -57,86 +57,31 @@ library(tidyverse)
 library(ggridges)
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers and values whitespace-scrubbed) and validate YAML params
+# Load data (headers and values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_ridgeline() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
 
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-plot_data <- raw_data %>%
-  # 1. Safely drop NAs
-  drop_na(all_of(c(params$group_var, params$value_var))) %>%
+# Build the plot object now so the chunk below can size fig.height from the
+# number of ridges it actually contains (nlevels of p$data$Group).
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-  # 2. Scrub strings, enforce numeric values
-  mutate(
-    Group_Raw = str_to_title(str_squish(as.character(.data[[params$group_var]]))),
-    Value = cerp_numeric(.data[[params$value_var]], params$value_var)
-  ) %>%
-  drop_na(Value) %>%
-
-  # 3. Cardinality guard: keep the max_groups most frequent, lump the rest
-  mutate(Group_Lumped = cerp_lump(Group_Raw, n = params$max_groups)) %>%
-
-  # 4. Density protection: a curve needs enough observations
-  group_by(Group_Lumped) %>%
-  filter(n() >= 3) %>%
-  ungroup() %>%
-
-  # 5. Wrap long names, order ridges by median so the eye reads a ranking
-  mutate(
-    Group = str_wrap(as.character(Group_Lumped), width = 18),
-    Group = fct_reorder(Group, Value, .fun = median, na.rm = TRUE)
-  )
-
-n_lumped <- sum(str_detect(as.character(plot_data$Group), "^Other"))
+p <- viz_ridgeline(
+  data           = raw_data,
+  group_var      = params$group_var,
+  value_var      = params$value_var,
+  max_groups     = params$max_groups,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  y_label        = params$y_label,
+  source_note    = params$source_note
+)
 ```
 
 
-```{r plot-ridgeline, fig.height=max(4.5, 1 + 0.6 * nlevels(plot_data$Group))}
-source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
-
-# De-emphasize the lumped "Other" ridge; brand color for real groups
-ridge_fills <- setNames(
-  ifelse(str_detect(levels(plot_data$Group), "^Other"),
-         unname(cerp_cols["neutral"]),
-         unname(cerp_cols["primary"])),
-  levels(plot_data$Group)
-)
-
-ggplot(plot_data, aes(x = Value, y = Group, fill = Group)) +
-
-  # Overlapping ridges with an internal median line for instant comparison
-  geom_density_ridges(
-    scale = 1.7,
-    color = cerp_cols[["bg"]],
-    linewidth = 0.8,
-    alpha = 0.9,
-    rel_min_height = 0.01,
-    quantile_lines = TRUE,
-    quantiles = 2,
-    vline_color = "#1b3a4b55"
-  ) +
-
-  scale_x_continuous(labels = scales::comma, expand = c(0.01, 0)) +
-  scale_y_discrete(expand = expansion(add = c(0.2, 1.4))) +
-  scale_fill_manual(values = ridge_fills) +
-
-  theme_cerp() +
-
-  theme(
-    legend.position = "none",
-    axis.text.y = element_text(size = 12, face = "bold",
-                               color = cerp_cols[["text"]]),
-    panel.grid.major.y = element_blank(),
-    panel.grid.major.x = element_line(color = "#e5e1d8", linewidth = 0.45)
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste("Population Distribution:", params$metric_name)),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0( "Each ridge is a group's full distribution; the vertical line marks its median. ", "Ridges are ordered by median, highest at the top", if (n_lumped > 0) paste0(". Smaller groups are combined into ‘Other’") else "", "." )),
-    x = if (nzchar(params$x_label)) params$x_label else (params$metric_name),
-    y = if (nzchar(params$y_label)) params$y_label else (NULL),
-    caption = params$source_note
-  )
+```{r plot-ridgeline, fig.height=max(4.5, 1 + 0.6 * nlevels(p$data$Group))}
+p
 ```

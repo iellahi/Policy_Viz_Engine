@@ -2,7 +2,7 @@
 title: "`r params$report_title`"
 author: "`r params$report_author`"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     theme: flatly
     toc: false
@@ -10,19 +10,19 @@ output:
 params:
   # Master Data Path
   data_path: !r here::here("1_data", "master_macro_panel.csv")
-  
+
   # Variables
   entity_var: "district"
   time_var: "year"
   filter_time: 2025
   value_var: "literacy_rate"
   target_var: "target_score"
-  
+
   # KPI Background Zones (0 to 100 scale)
   zone_poor_max: 50
   zone_fair_max: 75
   zone_good_max: 100
-  
+
   # Policy-Facing Labels
   metric_name: "Literacy Rate vs. Target (%)"
 
@@ -44,7 +44,7 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "#FAF9F6"),
   fig.path = paste0(here::here("4_output", "figures"), "/"),
   fig.width = 9,
-  fig.height = 5, 
+  fig.height = 5,
   fig.retina = 3
 )
 ```
@@ -58,81 +58,32 @@ library(tidyverse)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
-# Load data (headers/values whitespace-scrubbed) and validate YAML params
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All data scrubbing + plotting now lives in viz_bullet() (2_R/2.6_viz_functions.R).
 raw_data <- cerp_load(params$data_path)
 cerp_validate(raw_data, params[grepl("_var$", names(params))])
-
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-# Define string parameters OUTSIDE the mutate chain to prevent vector duplication
-filter_str <- as.character(params$filter_time)
-
-plot_data <- raw_data %>%
-  # 1. Safely drop NAs for required columns
-  drop_na(!!sym(params$time_var), !!sym(params$entity_var), !!sym(params$value_var), !!sym(params$target_var)) %>%
-  
-  # 2. Type-Safe Filtering for the specific time period
-  mutate(Time_Raw = as.character(!!sym(params$time_var))) %>%
-  filter(Time_Raw == filter_str) %>%
-  
-  # 3. Scrub labels and force strict numeric types for chart math
-  mutate(
-    Entity = str_wrap(str_to_title(str_trim(as.character(!!sym(params$entity_var)))), width = 15),
-    Value = as.numeric(!!sym(params$value_var)),
-    Target = as.numeric(!!sym(params$target_var)),
-    Poor = as.numeric(params$zone_poor_max),
-    Fair = as.numeric(params$zone_fair_max),
-    Good = as.numeric(params$zone_good_max)
-  ) %>%
-  
-  # 4. Sort entities by performance so the chart flows logically
-  arrange(Value) %>%
-  mutate(Entity = factor(Entity, levels = unique(Entity)))
 ```
 
 
 ```{r plot-bullet}
 source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-ggplot(plot_data, aes(y = Entity)) +
-  
-  # 1. Background Zones (Drawn widest to narrowest so they stack correctly)
-  # Good Zone (Lightest Grey)
-  geom_col(aes(x = Good), fill = "#EBEBEB", width = 0.6) +
-  # Fair Zone (Medium Grey)
-  geom_col(aes(x = Fair), fill = "#D6D6D6", width = 0.6) +
-  # Poor Zone (Dark Grey)
-  geom_col(aes(x = Poor), fill = "#BFBFBF", width = 0.6) +
-  
-  # 2. Actual Performance Bar (Thinner, filled with primary brand color)
-  geom_col(aes(x = Value), fill = cerp_cols["primary"], width = 0.25) +
-  
-  # 3. Target Marker (Using geom_segment forces rendering without range-guessing)
-  geom_segment(aes(
-      x = Target, xend = Target, 
-      y = as.numeric(Entity) - 0.3, yend = as.numeric(Entity) + 0.3
-    ), 
-    color = cerp_cols[["text"]], linewidth = 1.2
-  ) +
-  
-  theme_cerp() +
-  
-  # Set the X-axis limits based on the good zone, adding a tiny right margin to avoid clipping targets
-  scale_x_continuous(limits = c(0, params$zone_good_max), expand = expansion(mult = c(0, 0.05))) +
-  
-  # Clean up the theme for a minimal dashboard look
-  theme(
-    panel.grid.major.y = element_blank(),
-    axis.text.y = element_text(size = 12, face = "bold", color = cerp_cols[["text"]]),
-    axis.ticks.y = element_blank()
-  ) +
-  
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste("KPI Tracking:", params$metric_name)),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else (paste0("Status as of ", params$filter_time, ". Dark grey: <", params$zone_poor_max, "%, Medium: <", params$zone_fair_max, "%, Light: <", params$zone_good_max, "%. Black line indicates target.")),
-    x = if (nzchar(params$x_label)) params$x_label else (params$metric_name),
-    y = if (nzchar(params$y_label)) params$y_label else (NULL),
-    caption = params$source_note
-  )
+viz_bullet(
+  data           = raw_data,
+  entity_var     = params$entity_var,
+  time_var       = params$time_var,
+  filter_time    = params$filter_time,
+  value_var      = params$value_var,
+  target_var     = params$target_var,
+  zone_poor_max  = params$zone_poor_max,
+  zone_fair_max  = params$zone_fair_max,
+  zone_good_max  = params$zone_good_max,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  y_label        = params$y_label,
+  source_note    = params$source_note
+)
 ```

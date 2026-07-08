@@ -67,97 +67,25 @@ if (params$aggregate %in% c("none", "mean", "sum")) {
 }
 cerp_validate(raw_data, required)
 
-# ==============================================================================
-# DATA SCRUBBING & PROCESSING BLOCK
-# ==============================================================================
-# 1. Parse dates robustly: "2025-11-01 04:36:41", ISO timestamps, plain dates
-dated <- raw_data %>%
-  drop_na(all_of(params$date_var)) %>%
-  mutate(Date = cerp_parse_date(.data[[params$date_var]])) %>%
-  drop_na(Date)
+# Build the plot object now so the chunk below can size fig.height from the
+# number of years it actually contains (n_distinct of p$data$Year). All date
+# parsing, aggregation, grid math + faceting live in viz_calendar_heatmap().
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
 
-# 2. Collapse to exactly one value per day, per the aggregate parameter
-daily <- switch(params$aggregate,
-  "count" = dated %>% count(Date, name = "Value"),
-  "mean"  = dated %>%
-    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
-    group_by(Date) %>% summarize(Value = mean(V, na.rm = TRUE), .groups = "drop"),
-  "sum"   = dated %>%
-    mutate(V = cerp_numeric(.data[[params$value_var]], params$value_var)) %>%
-    group_by(Date) %>% summarize(Value = sum(V, na.rm = TRUE), .groups = "drop"),
-  "none"  = {
-    if (anyDuplicated(dated$Date) > 0) stop(
-      "Multiple rows share the same date, but aggregate is 'none'. ",
-      "Set the 'aggregate' parameter to 'count' (rows per day), ",
-      "'mean', or 'sum' so the template knows how to combine them."
-    )
-    dated %>% transmute(Date, Value = cerp_numeric(.data[[params$value_var]],
-                                                   params$value_var))
-  },
-  stop("Unknown aggregate option: '", params$aggregate,
-       "'. Use 'none', 'count', 'mean', or 'sum'.")
+p <- viz_calendar_heatmap(
+  data           = raw_data,
+  date_var       = params$date_var,
+  value_var      = params$value_var,
+  aggregate      = params$aggregate,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  source_note    = params$source_note
 )
-
-# 3. Missing Day Protection + calendar grid math
-plot_data <- daily %>%
-  complete(Date = seq.Date(min(Date), max(Date), by = "day")) %>%
-  mutate(
-    Year = year(Date),
-    Month = month(Date, label = TRUE, abbr = FALSE),
-    DayOfWeek = wday(Date, label = TRUE, abbr = TRUE, week_start = 1),
-    first_day_of_month = floor_date(Date, "month"),
-    first_day_wday = wday(first_day_of_month, week_start = 1),
-    WeekOfMonth = ceiling((day(Date) + first_day_wday - 1) / 7),
-    DayOfWeek = fct_rev(DayOfWeek)
-  )
-
-n_years <- n_distinct(plot_data$Year)
 ```
 
 
-```{r plot-heatmap, fig.height=max(3.5, 3.2 * n_distinct(plot_data$Year))}
-source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
-
-p <- ggplot(plot_data, aes(x = WeekOfMonth, y = DayOfWeek, fill = Value)) +
-
-  geom_tile(color = cerp_cols[["bg"]], linewidth = 0.6) +
-
-  coord_equal() +
-
-  # Sequential ramp: box tint (low) -> primary (high); missing days stay faint
-  scale_fill_gradient(
-    low = unname(cerp_cols["box"]),
-    high = unname(cerp_cols["primary"]),
-    na.value = "#f1ede4",
-    name = params$metric_name
-  ) +
-
-  theme_cerp() +
-
-  theme(
-    legend.position = "top",
-    legend.justification = "left",
-    legend.key.width = unit(1.8, "cm"),
-    legend.key.height = unit(0.35, "cm"),
-    legend.title = element_text(family = cerp_font_caption, size = 10,
-                                color = cerp_cols[["subtle"]]),
-    axis.title = element_blank(),
-    axis.text.x = element_blank(),
-    panel.grid = element_blank(),
-    panel.spacing = unit(0.25, "lines"),
-    strip.text = element_text(size = 11)
-  ) +
-
-  labs(
-    title = if (nzchar(params$chart_title)) params$chart_title else (paste("High-Frequency Engagement:", params$metric_name)),
-    subtitle = if (nzchar(params$chart_subtitle)) params$chart_subtitle else ("One square per day. Darker means higher; pale squares are days with no data."),
-    caption = params$source_note
-  )
-
-# Single year: months in one row. Multiple years: one row of months per year.
-if (n_years > 1) {
-  p + facet_grid(Year ~ Month)
-} else {
-  p + facet_wrap(~ Month, nrow = 1)
-}
+```{r plot-heatmap, fig.height=max(3.5, 3.2 * n_distinct(p$data$Year))}
+p
 ```
