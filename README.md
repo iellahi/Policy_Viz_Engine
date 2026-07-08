@@ -12,14 +12,21 @@ optionally, stitches selected ones into a single combined report.
   data is gitignored and never leaves the machine.
 * **/2_R** — **The Engine Room:** setup theme (`2.0_setup_theme.R`), brand palette
   (`theme_colors.yml`), Excel→CSV converter (`2.3_excel_to_csv.R`), shared helpers
-  (`2.5_helpers.R`), the config-driven production render (`2.2_master_knit.R`), the
-  testing render (`2.4_test_knit.R`), and the CSS generator (`2.7_build_css.R`).
+  (`2.5_helpers.R`), **all chart logic as `viz_*()` functions** (`2.6_viz_functions.R`),
+  the config-driven production render (`2.2_master_knit.R`), the testing render
+  (`2.4_test_knit.R`), and the CSS generator (`2.7_build_css.R`).
 * **/3_templates** — **The Factory:** 18 parameterized `.Rmd` templates (3.01–3.18),
   one visualization each, plus the combined-report parent (`3.00_combined_report.Rmd`).
-  You never edit these — you point them at data and set labels via `render_config.yml`.
+  Each template is a thin wrapper: it loads and validates the data, then calls its
+  `viz_*()` function from `2_R/2.6_viz_functions.R` (chart code lives there, never in
+  the Rmd). You never edit these — you point them at data and set labels via
+  `render_config.yml`.
 * **/3_templates_testing** — the same template bodies pointed at messy real data, for
   stress-testing. Rendered by `2.4_test_knit.R`.
 * **/4_output** — **The Deliverables:** generated HTML reports and figures.
+* **/5_tests** — **The Safety Net:** `snapshot.R`, a golden-figure regression test that
+  hashes every rendered figure so a refactor can be proven to change no pixels. See
+  `5_tests/README.md`.
 
 ## Prerequisites & Setup
 
@@ -28,12 +35,46 @@ optionally, stitches selected ones into a single combined report.
    resolve from the project root (every script uses `here::here()`).
 3. Restore the reproducible package environment from the R console:
    ```r
-   install.packages("renv")
    renv::restore()
    ```
    `renv` owns the environment. Templates **never** install packages at render time —
    a missing package fails loudly and tells you to run `renv::restore()`. Output is
    HTML; no LaTeX/tinytex is required.
+
+## Reproducing on another computer
+
+The repo is self-contained; a fresh machine needs three things beyond the files:
+
+1. **R (matching version).** `renv.lock` pins **R 4.4.1** and every package. A nearby
+   4.4.x is normally fine. Opening `cerp_viz_repo.Rproj` runs `.Rprofile`, which
+   auto-activates `renv` (bootstrapping it if absent) — the `renv/library/` folder is
+   **not** in git, so the packages themselves come from `renv::restore()`:
+   ```r
+   renv::restore()   # installs the exact package versions from renv.lock
+   ```
+2. **Fonts (for faithful output).** The house style uses **Charter** (body, falls back
+   to Georgia → generic serif) and **Libre Franklin** (titles/captions, falls back to
+   Franklin Gothic Medium → generic sans). Renders succeed without them, but to
+   reproduce the intended look install those two fonts system-wide before rendering.
+   Because font rasterization differs across machines, figures will not be *pixel*-identical
+   to another computer's — see the snapshot note below.
+3. **System libraries for `sf`** (only for the 3.15 choropleth): **GDAL, GEOS, PROJ**
+   must be installed at the OS level (e.g. `brew install gdal` on macOS, or the
+   `libgdal-dev libgeos-dev libproj-dev` packages on Debian/Ubuntu). Every other
+   template is pure R.
+
+What travels in git: the code, `renv.lock`, the synthetic `master_*.csv` demo data, and
+the spatial assets under `1_data/geo/`. What does **not**: installed packages
+(`renv/library/`), any field data in `1_data/`, and everything generated in `4_output/`.
+So on a new machine you clone, `renv::restore()`, then render (below) to regenerate the
+outputs.
+
+**Snapshot manifest is machine-specific.** `5_tests/snapshots/manifest.csv` records
+figure hashes, and those depend on the local font rasterizer, so the committed manifest
+from one computer will *not* match another. On a new machine, re-baseline before using
+the harness: delete `5_tests/snapshots/manifest.csv`, run
+`source(here::here("5_tests", "snapshot.R"))` once to record a fresh baseline, then use
+compare runs after that. (Details in `5_tests/README.md`.)
 
 ## Quick Start
 
