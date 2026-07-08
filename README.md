@@ -43,38 +43,64 @@ optionally, stitches selected ones into a single combined report.
 
 ## Reproducing on another computer
 
-The repo is self-contained; a fresh machine needs three things beyond the files:
+Clone the repo:
 
-1. **R (matching version).** `renv.lock` pins **R 4.4.1** and every package. A nearby
-   4.4.x is normally fine. Opening `cerp_viz_repo.Rproj` runs `.Rprofile`, which
-   auto-activates `renv` (bootstrapping it if absent) — the `renv/library/` folder is
-   **not** in git, so the packages themselves come from `renv::restore()`:
+```bash
+git clone https://github.com/iellahi/Cerp_Viz_Repo.git
+cd Cerp_Viz_Repo
+```
+
+Then, in RStudio:
+
+1. Open **`cerp_viz_repo.Rproj`** — this runs `.Rprofile`, which auto-activates `renv`
+   (bootstrapping it if absent) and sets the project root for all `here::here()` paths.
+2. In the R console, restore the exact package versions from `renv.lock`:
    ```r
-   renv::restore()   # installs the exact package versions from renv.lock
+   renv::restore()
    ```
-2. **Fonts (for faithful output).** The house style uses **Charter** (body, falls back
-   to Georgia → generic serif) and **Libre Franklin** (titles/captions, falls back to
-   Franklin Gothic Medium → generic sans). Renders succeed without them, but to
-   reproduce the intended look install those two fonts system-wide before rendering.
-   Because font rasterization differs across machines, figures will not be *pixel*-identical
-   to another computer's — see the snapshot note below.
-3. **System libraries for `sf`** (only for the 3.15 choropleth): **GDAL, GEOS, PROJ**
-   must be installed at the OS level (e.g. `brew install gdal` on macOS, or the
-   `libgdal-dev libgeos-dev libproj-dev` packages on Debian/Ubuntu). Every other
-   template is pure R.
+3. Render everything:
+   ```r
+   source(here::here("2_R", "2.2_master_knit.R"))
+   ```
+   The configured reports + the combined report land in `4_output/`.
 
-What travels in git: the code, `renv.lock`, the synthetic `master_*.csv` demo data, and
-the spatial assets under `1_data/geo/`. What does **not**: installed packages
-(`renv/library/`), any field data in `1_data/`, and everything generated in `4_output/`.
-So on a new machine you clone, `renv::restore()`, then render (below) to regenerate the
-outputs.
+### What the machine needs
 
-**Snapshot manifest is machine-specific.** `5_tests/snapshots/manifest.csv` records
-figure hashes, and those depend on the local font rasterizer, so the committed manifest
-from one computer will *not* match another. On a new machine, re-baseline before using
-the harness: delete `5_tests/snapshots/manifest.csv`, run
-`source(here::here("5_tests", "snapshot.R"))` once to record a fresh baseline, then use
-compare runs after that. (Details in `5_tests/README.md`.)
+- **R (matching version).** `renv.lock` pins **R 4.4.1**; a nearby 4.4.x is normally
+  fine. `renv/library/` is **not** in git, so packages come from `renv::restore()`.
+- **Fonts (for faithful output).** The house style uses **Charter** (body, falls back
+  to Georgia → generic serif) and **Libre Franklin** (titles/captions, falls back to
+  Franklin Gothic Medium → generic sans). Renders succeed without them, but install
+  both system-wide to reproduce the intended look. Font rasterization differs across
+  machines, so figures will not be *pixel*-identical to another computer's.
+- **System libraries for `sf`** (only the 3.15 choropleth): **GDAL, GEOS, PROJ** at the
+  OS level — `brew install gdal geos proj` (macOS) or `libgdal-dev libgeos-dev
+  libproj-dev` (Debian/Ubuntu). If `2.2_master_knit.R` errors *only* on the choropleth
+  entries, this is why. Every other template is pure R.
+
+What travels in git: the code, `renv.lock`, the synthetic `master_*.csv` demo data, the
+spatial assets under `1_data/geo/`, and the test manifest in `5_tests/`. What does
+**not**: installed packages (`renv/library/`), any field data in `1_data/`, and
+everything generated in `4_output/`.
+
+## Regression tests (`5_tests`)
+
+`5_tests/snapshot.R` proves a refactor changed no pixels: it renders the full production
+suite and SHA-256-hashes every figure in `4_output/figures/`, comparing against the
+golden manifest `5_tests/snapshots/manifest.csv` (tracked in git). Run it with:
+
+```r
+source(here::here("5_tests", "snapshot.R"))
+```
+
+- With `manifest.csv` present (it is committed), this runs in **compare** mode and
+  reports `0 mismatches ...` when nothing changed, or lists any figure whose hash moved.
+- With `manifest.csv` absent, it runs in **record** mode and writes a fresh baseline.
+
+**On a different computer, re-baseline first.** Figure hashes depend on the local font
+rasterizer, so the committed manifest will not match another machine. Delete
+`5_tests/snapshots/manifest.csv`, run the line above once to record a new baseline, then
+use compare runs after that. Full details: `5_tests/README.md`.
 
 ## Quick Start
 

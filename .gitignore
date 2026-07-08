@@ -32,5 +32,13 @@ ibraheem_viz_repo.zip
 /3_templates_testing/*.html
 README.html
 
+# Stress suite (phase 4): generated corrupted data + its throwaway renders +
+# the per-run results log never go to git. The scripts (stress_*.R) DO.
+# stress_data is derived from the synthetic master_*.csv, but is treated like any
+# other 1_data drop and kept out of the repo.
+/5_tests/stress_data/
+/5_tests/stress_output/
+/5_tests/stress_results.csv
+
 CLAUDE.md
 PLAN.md
