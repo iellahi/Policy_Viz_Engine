@@ -55,7 +55,11 @@ cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>"
 
 ```{r load-and-prep}
 library(tidyverse)
-if (!require("ggrepel")) install.packages("ggrepel")
+if (!requireNamespace("ggrepel", quietly = TRUE)) {
+  stop("The 'ggrepel' package is required for this template. ",
+       "Run renv::restore() from the project root, then re-render.",
+       call. = FALSE)
+}
 library(ggrepel)
 
 source(here::here("2_R", "2.5_helpers.R"), local = TRUE)

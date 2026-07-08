@@ -60,7 +60,7 @@ source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
 if (!requireNamespace("fixest", quietly = TRUE)) {
   stop("The 'fixest' package is required for the event-study plot. ",
-       "Install it once with renv::install('fixest').", call. = FALSE)
+       "Run renv::restore() from the project root, then re-render.", call. = FALSE)
 }
 suppressMessages(library(fixest))   # attach so i() resolves inside the formula
 

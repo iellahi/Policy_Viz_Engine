@@ -13,6 +13,12 @@ library(yaml)
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+# Shared render helper: cerp_render_one() (isolated env, tryCatch-continue,
+# consistent cli messages) is defined in 2.5_helpers.R and used by both this
+# production script and the testing script (2.4) so render behavior stays in one
+# place. Sourcing it also loads the house data helpers.
+source(here::here("2_R", "2.5_helpers.R"))
+
 # 0. Pre-processing: convert any dropped Excel files to CSVs automatically
 source(here::here("2_R", "2.3_excel_to_csv.R"))
 
@@ -97,7 +103,6 @@ for (entry in enabled_reports) {
   num      <- regmatches(entry$template, regexpr("^[0-9]+\\.[0-9]+", entry$template))
   stem     <- if (length(num) == 1L) paste0(num, "_", entry$id) else entry$id
   out_file <- paste0(stem, ".html")
-  cli_alert_info("Rendering: {entry$id}  ({entry$template})")
 
   # Build param overrides: entry params + resolved absolute data_path (if given)
   overrides <- entry$params %||% list()
@@ -105,22 +110,16 @@ for (entry in enabled_reports) {
     overrides$data_path <- here::here(data_dir, entry$data)
   }
 
-  tryCatch({
-    render(
-      input        = file.path(template_dir, entry$template),
-      output_dir   = output_dir,
-      output_file  = out_file,
-      params       = overrides,
-      envir        = new.env(),   # isolate: no data bleed between templates
-      quiet        = TRUE
-    )
-    cli_alert_success("  -> 4_output/{out_file}")
-    n_ok <- n_ok + 1L
-  }, error = function(e) {
-    cli_alert_danger("  FAILED: {entry$id}")
-    cli_alert_warning("  {e$message}")
-    n_fail <<- n_fail + 1L
-  })
+  # Delegate the render (isolated env, tryCatch-continue, cli messaging) to the
+  # shared helper; it returns TRUE/FALSE so we can tally successes and failures.
+  ok <- cerp_render_one(
+    input       = file.path(template_dir, entry$template),
+    output_dir  = output_dir,
+    output_file = out_file,
+    params      = overrides,
+    label       = paste0(entry$id, "  (", entry$template, ")")
+  )
+  if (isTRUE(ok)) n_ok <- n_ok + 1L else n_fail <- n_fail + 1L
   cat("\n")
 }
 
@@ -130,20 +129,13 @@ if (isTRUE(combined$enabled)) {
   if (!file.exists(parent)) {
     cli_alert_danger("combined.enabled is true but parent template is missing: 3_templates/3.00_combined_report.Rmd")
   } else {
-    cli_alert_info("Building combined report: {combined$output %||% 'cerp_combined_report.html'}")
-    tryCatch({
-      render(
-        input       = parent,
-        output_dir  = output_dir,
-        output_file = combined$output %||% "3.00_cerp_combined_report.html",
-        envir       = new.env(),
-        quiet       = TRUE
-      )
-      cli_alert_success("  -> 4_output/{combined$output %||% 'cerp_combined_report.html'}")
-    }, error = function(e) {
-      cli_alert_danger("  Combined report FAILED.")
-      cli_alert_warning("  {e$message}")
-    })
+    combined_out <- combined$output %||% "3.00_cerp_combined_report.html"
+    cerp_render_one(
+      input       = parent,
+      output_dir  = output_dir,
+      output_file = combined_out,
+      label       = paste0("combined report  (", combined_out, ")")
+    )
     cat("\n")
   }
 }

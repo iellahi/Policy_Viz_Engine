@@ -5,8 +5,29 @@
 #              a template must never render a silently-wrong chart.
 # ==============================================================================
 
-if (!require("pacman")) install.packages("pacman")
-pacman::p_load(readr, dplyr, stringr, forcats, lubridate)
+# ------------------------------------------------------------------------------
+# cerp_require(): attach packages, NEVER installing at render time. renv owns
+# the environment (hard rule 5) — a missing package is a loud, fixable error,
+# not an excuse to mutate the package library mid-render.
+# ------------------------------------------------------------------------------
+cerp_require <- function(pkgs) {
+  ok <- vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)
+  if (any(!ok)) {
+    stop(
+      "Missing package(s): ", paste(pkgs[!ok], collapse = ", "),
+      "\nThis project uses renv. Run renv::restore() from the project root, ",
+      "then re-render.",
+      call. = FALSE
+    )
+  }
+  invisible(lapply(pkgs, function(p) {
+    suppressPackageStartupMessages(library(p, character.only = TRUE))
+  }))
+}
+
+cerp_require(c("readr", "dplyr", "stringr", "forcats", "lubridate"))
+
+`%||%` <- function(x, y) if (is.null(x)) y else x
 
 # ------------------------------------------------------------------------------
 # cerp_load(): read a CSV and scrub the two most common field-data landmines —
@@ -195,4 +216,33 @@ cerp_harmonize <- function(x, canonical, lookup = NULL) {
 
   # map back onto the full-length input, preserving order
   unname(setNames(matched, uvals)[x])
+}
+
+# ------------------------------------------------------------------------------
+# cerp_render_one(): render a single Rmd with the house behavior shared by the
+# production (2.2) and testing (2.4) knit scripts — isolated environment,
+# tryCatch-continue, consistent cli messages. Returns TRUE on success, FALSE on
+# failure (so callers can tally). rmarkdown/cli are only required at call time.
+# ------------------------------------------------------------------------------
+cerp_render_one <- function(input, output_dir, output_file = NULL,
+                            params = NULL, label = basename(input)) {
+  cerp_require(c("rmarkdown", "cli"))
+  cli::cli_alert_info("Rendering: {label}")
+  tryCatch({
+    args <- list(
+      input      = input,
+      output_dir = output_dir,
+      envir      = new.env(),   # isolate: no data bleed between templates
+      quiet      = TRUE
+    )
+    if (!is.null(output_file)) args$output_file <- output_file
+    if (length(params) > 0)    args$params      <- params
+    out <- do.call(rmarkdown::render, args)
+    cli::cli_alert_success("  -> {basename(output_dir)}/{basename(out)}")
+    TRUE
+  }, error = function(e) {
+    cli::cli_alert_danger("  FAILED: {label}")
+    cli::cli_alert_warning("  {e$message}")
+    FALSE
+  })
 }

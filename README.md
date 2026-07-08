@@ -1,52 +1,106 @@
 # CERP Analytics: Automated Visualization Suite
 
-This repository is a modular, automated reporting engine. It turns raw data into policy-ready PDFs and HTML reports without requiring the user to write any R code.
+A modular, parameterized R Markdown reporting engine. It turns raw CSV/Excel data
+into policy-ready **HTML** reports without requiring the user to write any R code.
+You edit one config file (`render_config.yml`); the engine renders every visual and,
+optionally, stitches selected ones into a single combined report.
 
 ## Repository Architecture
 
-* **/1_data** | **The Drop Zone:** Place raw `.csv` or `.xlsx` files here.
-* **/2_R** | **The Engine Room:** Houses setup themes, the Excel converter, and the master render script.
-* **/3_templates** | **The Factory:** Contains parameterized `.Rmd` templates. Users only edit the YAML headers here.
-* **/4_output** | **The Deliverables:** Final generated HTML and compiled PDF reports.
+* **/1_data** — **The Drop Zone:** Place raw `.csv` or `.xlsx` files here. Only the
+  synthetic `master_*.csv` demo data and `geo/` are tracked in git; all other field
+  data is gitignored and never leaves the machine.
+* **/2_R** — **The Engine Room:** setup theme (`2.0_setup_theme.R`), brand palette
+  (`theme_colors.yml`), Excel→CSV converter (`2.3_excel_to_csv.R`), shared helpers
+  (`2.5_helpers.R`), the config-driven production render (`2.2_master_knit.R`), the
+  testing render (`2.4_test_knit.R`), and the CSS generator (`2.7_build_css.R`).
+* **/3_templates** — **The Factory:** 18 parameterized `.Rmd` templates (3.01–3.18),
+  one visualization each, plus the combined-report parent (`3.00_combined_report.Rmd`).
+  You never edit these — you point them at data and set labels via `render_config.yml`.
+* **/3_templates_testing** — the same template bodies pointed at messy real data, for
+  stress-testing. Rendered by `2.4_test_knit.R`.
+* **/4_output** — **The Deliverables:** generated HTML reports and figures.
 
 ## Prerequisites & Setup
 
 1. Install **R** and **RStudio**.
-2. Download the repository and **always open the `cerp_viz_repo.Rproj` file first** to automatically set the correct working directory.
-3. Initialize the reproducible environment by opening the R console and running:
-   ```R
+2. Download the repository and **always open `cerp_viz_repo.Rproj` first** so paths
+   resolve from the project root (every script uses `here::here()`).
+3. Restore the reproducible package environment from the R console:
+   ```r
    install.packages("renv")
    renv::restore()
-   tinytex::install_tinytex()
    ```
+   `renv` owns the environment. Templates **never** install packages at render time —
+   a missing package fails loudly and tells you to run `renv::restore()`. Output is
+   HTML; no LaTeX/tinytex is required.
 
-## Quick Start Guide
+## Quick Start
 
-1. **Drop Data:** Place your new `.csv` or `.xlsx` into the `/1_data` folder.
-2. **Update Parameters:** Open the desired template in `/3_templates` and update the top 5 lines of text (the YAML header) to match your dataset variables and labels.
-3. **Generate:** Open `2_R/2.2_master_knit.R` and click "Run". (If you provided an Excel file, the engine will automatically convert it to a CSV first). Retrieve your final report from `/4_output`.
+1. **Drop data:** put your `.csv` (or `.xlsx`, auto-converted) into `/1_data`.
+2. **Edit `render_config.yml`** (the only file you touch — never the R or the `.Rmd`):
+   * Each entry under `reports:` renders one HTML into `/4_output`. Give it a unique
+     `id`, the `template:` filename, and (optionally) a `data:` filename resolved
+     under `1_data/`.
+   * Under `params:` list **only** what you want to override — the column-referencing
+     `*_var` params (e.g. `group_var: treatment_group`), labels, and report text.
+     Anything you omit falls back to the template's own default.
+   * Set `enabled: false` to skip an entry without deleting it.
+   * The `combined:` block stitches selected `id`s (in the order listed under
+     `include:`) into one self-contained HTML report.
+3. **Generate:** open `2_R/2.2_master_knit.R` and click **Source** (or run
+   `source(here::here("2_R", "2.2_master_knit.R"))`). The engine validates the whole
+   config up front, renders each enabled entry (one failure never stops the batch),
+   then builds the combined report. Collect everything from `/4_output`.
+
+Column names in `*_var` params are validated against the actual data on load: a typo
+produces a clear error naming the missing column and the closest match, not a
+silently-wrong chart.
 
 ## Template Dictionary
 
-Choose the right template for your policy narrative:
+Choose the right template for your policy narrative (set it as `template:` in the config):
 
-* **3.01 Dumbbell Plot:** Show absolute magnitude of change over time (Before vs. After).
-* **3.02 Distribution Shift:** Compare the spread of continuous outcomes between two groups.
-* **3.03 Forest Plot:** Prove statistical significance of a program's impact (Treatment vs. Control CIs).
-* **3.04 Subgroup Impacts:** Visualize differential program effects across specific population segments or demographic cohorts.
-* **3.05 Waffle Chart:** Visualize proportional adoption rates (Out of 100).
-* **3.06 Slopegraph:** Track clean longitudinal trajectory and ranking changes.
-* **3.07 Diverging Stacked Bar:** Display household survey/Likert sentiment cleanly.
-* **3.08 Icon Array:** Humanize massive sample attrition counts and population sizes.
-* **3.09 Waterfall Chart:** Track budget pipelines, additions, and systemic losses.
-* **3.10 Bump Chart:** Highlight specific regional rank changes over time (League Tables).
-* **3.11 Bullet Chart:** Track entity performance against specific KPIs and target zones.
-* **3.12 Deviation Bar Chart:** Instantly identify outlier performance relative to a baseline average.
-* **3.13 Ridgeline Plot:** Show macro-level distribution shifts across an entire population over time.
-* **3.14 Calendar Heatmap:** Visualize high-frequency daily interaction and operational consistency over time.
+* **3.01 Dumbbell Plot** — absolute magnitude of change over time (Before vs. After).
+* **3.02 Distribution Shift** — compare the spread of a continuous outcome between groups.
+* **3.03 Forest Plot** — statistical significance of impact (Treatment vs. Control CIs).
+* **3.04 Subgroup Impacts** — differential effects across population segments/cohorts.
+* **3.05 Waffle Chart** — proportional adoption rates (out of 100).
+* **3.06 Slopegraph** — clean longitudinal trajectory and ranking changes.
+* **3.07 Diverging Stacked Bar** — household survey / Likert sentiment.
+* **3.08 Icon Array** — humanize sample attrition counts and population sizes.
+* **3.09 Waterfall Chart** — budget pipelines, additions, and systemic losses.
+* **3.10 Bump Chart** — regional rank changes over time (league tables).
+* **3.11 Bullet Chart** — entity performance against KPIs and target zones.
+* **3.12 Deviation Bar Chart** — outlier performance relative to a baseline average.
+* **3.13 Ridgeline Plot** — distribution shifts across a population over time.
+* **3.14 Calendar Heatmap** — high-frequency daily activity and operational consistency.
+* **3.15 Choropleth Map** — a district-level map (uses `sf`, a geojson, and a versioned
+  district name crosswalk in `1_data/geo/`; `sf` needs system GDAL/GEOS/PROJ).
+* **3.16 Event-Study Plot** — dynamic treatment effects around an event time (`fixest`).
+* **3.17 Small Multiples** — one small faceted panel per unit for at-a-glance comparison.
+* **3.18 Heatmap Matrix** — a row × column value grid (e.g. district × year).
 
-## Troubleshooting & Roadmap
+`3.00_combined_report.Rmd` is the parent that stitches the visuals you list under
+`combined.include` in the config into a single HTML report — you don't edit it directly.
 
-* **Script Failures:** If a template fails during the master render, verify that your data contains no `NA` values in critical columns, and ensure your YAML variable names exactly match your headers (case-sensitive).
-* **Roadmap:**
-    * **Messy Data Stress Test:** Pull a raw, uncleaned dataset from a previous field project, drop it into the data folder, and run the templates to identify and patch any remaining edge cases.
+## Changing Brand Colors
+
+All brand colors live in one file: **`2_R/theme_colors.yml`**. Edit a hex there and
+every chart across all 18 templates updates on the next render — you never touch R code.
+The five colors that also style the HTML page chrome (`bg`, `text`, `box`, `subtle`,
+`primary`) drive `2_R/cerp_style.css`, which is **generated** from the palette: after
+changing one of those, run `source(here::here("2_R", "2.7_build_css.R"))` once to
+regenerate the CSS, then re-knit. Full instructions and how to revert: see
+[CHANGING_COLORS.md](CHANGING_COLORS.md).
+
+## Troubleshooting
+
+* **A template fails during render.** Read the error — it usually names the exact
+  column or parameter at fault. Check that your `*_var` names in `render_config.yml`
+  match your data headers (case-sensitive) and that key columns aren't all `NA`.
+* **"Missing package … run `renv::restore()`".** The environment is out of sync with
+  `renv.lock`; run `renv::restore()` from the project root, then re-render.
+* **Testing vs. production outputs.** `2.4_test_knit.R` writes to the same `/4_output`
+  folder and shares filenames with production (e.g. `3.06_slopegraph.html`); a testing
+  render overwrites the production HTML of the same id, and vice versa.

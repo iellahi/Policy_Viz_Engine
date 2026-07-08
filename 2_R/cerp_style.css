@@ -1,6 +1,12 @@
 /* CERP report styling — injected into every template's HTML output.
-   Design.md: bg #FAF9F6 | text #1b3a4b | boxes #e8f4f5 | Charter/Georgia body,
-   Libre Franklin headings & captions. */
+   GENERATED — edit theme_colors.yml and run 2.7_build_css.R.
+
+   This file is the HTML page chrome (page background, text, code boxes, links).
+   It is regenerated from 2_R/theme_colors.yml (the single source of truth for
+   brand color) by 2_R/2.7_build_css.R — do NOT edit it by hand; changes are
+   overwritten on the next build. Change a color in theme_colors.yml, then run
+   2.7_build_css.R. Fonts/layout stay fixed in the theme (design is centralized).
+   Design.md: Charter/Georgia body, Libre Franklin headings & captions. */
 
 body {
   background-color: #FAF9F6;

@@ -1,0 +1,41 @@
+# ==============================================================================
+# theme_colors.yml — CERP brand palette (SINGLE SOURCE OF TRUTH)
+# ------------------------------------------------------------------------------
+# Every chart color in all 18 templates resolves from this file, via
+# 2_R/2.0_setup_theme.R. Change a hex here → re-render → every chart updates.
+# Only the values below are editable; fonts, layout, and geom defaults stay
+# fixed in 2.0_setup_theme.R (design is centralized, not per-template).
+#
+# The defaults below ARE the current CERP theme (Design.md). Each line keeps its
+# original hex in an `original:` comment, so any change is one edit to revert.
+#
+# HOW TO PICK A COLOR (no web tool needed, works offline):
+#   install.packages("colourpicker")   # once, globally — do NOT add to renv;
+#                                       # it is a picking tool, not a render dep.
+#   Then in RStudio: Addins ▸ "Colour Picker" → pick → it hands you a hex →
+#   paste that hex below (keep the quotes), save, re-render.
+#
+# NOTE: this recolors future renders only; already-generated HTML in 4_output/
+# is unchanged until you re-knit. The HTML page chrome (page background, text,
+# code boxes, links) lives in 2_R/cerp_style.css, which is GENERATED from this
+# file: after changing bg / text / box / subtle / primary here, run
+# 2_R/2.7_build_css.R to regenerate it (never edit cerp_style.css by hand).
+# ==============================================================================
+
+# --- Core roles ---------------------------------------------------------------
+text:      "#1b3a4b"   # original: #1b3a4b  Deep slate — titles, axis text, anchor lines
+primary:   "#457b9d"   # original: #457b9d  Steel blue — main data series, "good"/positive
+secondary: "#a8dadc"   # original: #a8dadc  Pale teal — comparison series, light fills
+box:       "#e8f4f5"   # original: #e8f4f5  Text-box / panel highlight fill
+bg:        "#FAF9F6"   # original: #FAF9F6  Warm off-white page background
+neutral:   "#b7c9d3"   # original: #b7c9d3  Muted slate — control groups, de-emphasized
+accent:    "#e07a5f"   # original: #e07a5f  Terracotta — warnings, negative deviations
+subtle:    "#54707f"   # original: #54707f  Subtitles, axis labels, secondary text
+
+# --- Extended palette (categorical + semantic) --------------------------------
+sand:      "#f2cc8f"   # original: #f2cc8f  Sand — caution / 5th categorical
+sage:      "#74a892"   # original: #74a892  Muted sage — safe / go
+
+# --- Chart furniture (were hardcoded inside the ggplot theme) ------------------
+grid:          "#e5e1d8"   # original: #e5e1d8  Horizontal gridlines
+caption_muted: "#8a9aa3"   # original: #8a9aa3  Plot caption / footnote text

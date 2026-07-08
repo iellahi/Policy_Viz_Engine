@@ -229,6 +229,11 @@ reports:
 #   output   filename in 4_output/.
 #   include  ORDERED list of ids from `reports:` above — controls what appears
 #            and in what sequence. Ids must be enabled to be included.
+#
+# TO LEAVE A VISUAL OUT OF THE COMBINED REPORT: put a "#" at the start of its
+# line below (comment it out). It stays defined and still renders on its own
+# into 4_output/<id>.html — it's just skipped in the stitched report. Delete
+# the "#" to add it back. Reorder the lines to change section order.
 # ------------------------------------------------------------------------------
 
 combined:
@@ -237,15 +242,25 @@ combined:
   title: "CERP Visualization Suite — Combined Report"
   author: "Ibraheem Saqib Ellahi"
   intro: >
-    A single-file compendium of selected CERP policy visuals. Each section is
-    rendered from its own template and dataset, then stitched under one shared
-    house style.
+    A single-file compendium of CERP policy visuals. Each section is rendered
+    from its own template and dataset, then stitched under one shared house style.
   include:
-    - baseline_endline
-    - treatment_effects
-    - deviation_bar
-    - bump_chart
-    - calendar_heatmap
-    - event_study
-    - small_multiples
-    - heatmap_matrix
+    - baseline_endline     # 3.01 dumbbell plot
+    - distribution_shifts  # 3.02 density plot
+    - treatment_effects    # 3.03 forest plot
+    - subgroup_impacts     # 3.04 coefficient plot
+    - waffle_composition   # 3.05 waffle chart
+    - slopegraph           # 3.06 slopegraph
+    - diverging_bar        # 3.07 diverging bar chart
+    - icon_array           # 3.08 icon array
+    - waterfall_budget     # 3.09 waterfall chart
+    - bump_chart           # 3.10 bump chart
+    - bullet_chart         # 3.11 bullet chart
+    - deviation_bar        # 3.12 deviation bar chart
+    - ridgeline            # 3.13 ridgeline plot
+    - calendar_heatmap     # 3.14 calendar heatmap
+    - choropleth_demo      # 3.15 choropleth (5-district demo)
+    - choropleth_pk        # 3.15 choropleth (Pakistan ADM2, stylized demo geometry)
+    - event_study          # 3.16 event-study plot
+    - small_multiples      # 3.17 small multiples
+    - heatmap_matrix       # 3.18 heatmap matrix

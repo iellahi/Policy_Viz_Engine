@@ -62,7 +62,8 @@ source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
 
 if (!requireNamespace("sf", quietly = TRUE)) {
   stop("The 'sf' package is required for the choropleth map. ",
-       "Install it once with renv::install('sf') (needs system GDAL/GEOS/PROJ).",
+       "Run renv::restore() from the project root, then re-render ",
+       "(sf also needs system GDAL/GEOS/PROJ).",
        call. = FALSE)
 }
 suppressMessages(library(sf))   # attach so dplyr's sf-aware join dispatches
