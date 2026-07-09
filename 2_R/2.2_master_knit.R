@@ -19,6 +19,10 @@ library(yaml)
 # place. Sourcing it also loads the house data helpers.
 source(here::here("2_R", "2.5_helpers.R"))
 
+# Gallery builder: cerp_build_index() writes 4_output/index.html (Phase 11).
+# Called as the final step below, once every report has rendered.
+source(here::here("2_R", "2.8_build_index.R"))
+
 # 0. Pre-processing: convert any dropped Excel files to CSVs automatically
 source(here::here("2_R", "2.3_excel_to_csv.R"))
 
@@ -139,6 +143,18 @@ if (isTRUE(combined$enabled)) {
     cat("\n")
   }
 }
+
+# 5. Static gallery — write 4_output/index.html (Phase 11). Zero new deps; builds
+#    a thumbnail card per enabled report (first figure PNG, palette placeholder
+#    for table-only outputs) plus a featured card for the combined report. Wrapped
+#    so a gallery failure never masks the render summary that follows.
+tryCatch(
+  cerp_build_index(),
+  error = function(e) {
+    cli_alert_danger("Gallery build failed (reports still rendered OK):")
+    cli_alert_warning("  {e$message}")
+  }
+)
 
 cli_rule()
 cli_alert_success("Master render cycle complete: {n_ok} ok, {n_fail} failed. See /4_output.")

@@ -23,7 +23,9 @@ optionally, stitches selected ones into a single combined report.
   `render_config.yml`.
 * **/3_templates_testing** — the same template bodies pointed at messy real data, for
   stress-testing. Rendered by `2.4_test_knit.R`.
-* **/4_output** — **The Deliverables:** generated HTML reports and figures.
+* **/4_output** — **The Deliverables:** generated HTML reports and figures, plus
+  `index.html` — a static gallery (thumbnail card per report) built automatically at
+  the end of every production knit. Open it first to browse everything rendered.
 * **/5_tests** — **The Safety Net:** `snapshot.R`, a golden-figure regression test that
   hashes every rendered figure so a refactor can be proven to change no pixels. See
   `5_tests/README.md`.
@@ -119,6 +121,10 @@ use compare runs after that. Full details: `5_tests/README.md`.
    `source(here::here("2_R", "2.2_master_knit.R"))`). The engine validates the whole
    config up front, renders each enabled entry (one failure never stops the batch),
    then builds the combined report. Collect everything from `/4_output`.
+4. **Browse:** open `4_output/index.html` — a static gallery with one thumbnail card
+   per rendered report (first figure PNG; a palette placeholder tile for table-only
+   outputs like 3.21) plus a featured card for the combined report. It's rebuilt on
+   every knit, opens straight from disk, and needs no server or extra dependencies.
 
 Column names in `*_var` params are validated against the actual data on load: a typo
 produces a clear error naming the missing column and the closest match, not a
