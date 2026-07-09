@@ -171,5 +171,72 @@ event_panel <- expand_grid(school_id = 1:40, period = 2018:2025) %>%
   select(school_id, period, event_time, treated, test_score)
 write_csv(event_panel, here::here("1_data", "master_event_panel.csv"))
 
-message("Success! Seven master datasets generated in /1_data. ",
+# ==============================================================================
+# DATASET 8: Sample Flow (CONSORT diagram, 3.19)
+# One row per trial stage. Pre-randomization stages have a blank `arm` (they sit
+# on the central spine); post-randomization stages carry an arm so the flow
+# splits into Treatment/Control columns. `note` holds exclusion/attrition text.
+# ==============================================================================
+sample_flow <- tibble(
+  stage = c("Assessed for eligibility",
+            "Randomized",
+            "Allocated", "Allocated",
+            "Completed follow-up", "Completed follow-up",
+            "Analyzed", "Analyzed"),
+  n     = c(1200, 900, 450, 450, 410, 405, 402, 398),
+  arm   = c("", "", "Treatment", "Control", "Treatment", "Control",
+            "Treatment", "Control"),
+  note  = c("Excluded (n = 300): did not meet inclusion criteria (210); declined to participate (90)",
+            "", "", "",
+            "Lost to follow-up (n = 40)", "Lost to follow-up (n = 45)",
+            "Excluded from analysis (n = 8)", "Excluded from analysis (n = 7)")
+)
+write_csv(sample_flow, here::here("1_data", "master_sample_flow.csv"))
+
+# ==============================================================================
+# DATASET 9: District Scatter (Quadrant Scatter, 3.22)
+# District-level spending index vs outcome score. Two numeric axes + a label, laid
+# out so all four median-split quadrants are populated (efficient / underperforming
+# / high-high / low-low). Deterministic (no RNG) so the tracked CSV is stable.
+# ==============================================================================
+district_scatter <- tibble::tribble(
+  ~district,          ~spending_index, ~outcome_score,
+  "Abbottabad",        48, 84,  "Sialkot",           52, 80,
+  "Sargodha",          58, 74,  "Mardan",            55, 72,
+  "Gujranwala",        62, 78,  "Rawalpindi",        64, 70,
+  "Islamabad",         88, 90,  "Lahore",            82, 85,
+  "Faisalabad",        75, 76,  "Karachi",           90, 72,
+  "Multan",            72, 69,  "Peshawar",          78, 68,
+  "Vehari",            44, 52,  "Khanewal",          50, 58,
+  "Jhang",             56, 48,  "Kasur",             60, 55,
+  "Larkana",           46, 45,  "Mirpur Khas",       42, 50,
+  "Quetta",            85, 47,  "Hyderabad",         74, 60,
+  "Sukkur",            70, 54,  "Bahawalpur",        80, 58,
+  "Sheikhupura",       68, 62,  "Dera Ghazi Khan",   76, 49
+)
+write_csv(district_scatter, here::here("1_data", "master_district_scatter.csv"))
+
+# ==============================================================================
+# DATASET 10: Time-to-Event (Kaplan-Meier survival curve, 3.23)
+# 240 enrolled participants tracked over a 24-week program. `weeks` is time to
+# dropout (event) or end of follow-up (censored); `dropped` is 1 = dropped out,
+# 0 = still enrolled at last contact. Treatment has a lower dropout hazard than
+# Control, so its retention curve stays higher.
+# ==============================================================================
+max_weeks <- 24
+make_arm <- function(arm, n, hazard) {
+  t_event <- rexp(n, rate = hazard)                 # continuous time to dropout
+  weeks   <- ceiling(pmin(t_event, max_weeks))      # discretize to program weeks
+  dropped <- as.integer(t_event <= max_weeks)       # censored if it exceeds follow-up
+  tibble(group = arm, weeks = pmax(1L, as.integer(weeks)), dropped = dropped)
+}
+time_to_event <- bind_rows(
+  make_arm("Treatment", 120, hazard = 1 / 45),      # lower hazard -> better retention
+  make_arm("Control",   120, hazard = 1 / 22)
+) %>%
+  mutate(participant_id = row_number()) %>%
+  select(participant_id, group, weeks, dropped)
+write_csv(time_to_event, here::here("1_data", "master_time_to_event.csv"))
+
+message("Success! Ten master datasets generated in /1_data. ",
         "(Spatial assets in 1_data/geo/ are versioned/sourced, not generated here.)")

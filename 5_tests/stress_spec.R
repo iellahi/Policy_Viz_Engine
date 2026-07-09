@@ -67,6 +67,23 @@ stress_files <- list(
     text    = "treated",
     id      = "school_id",
     key     = c("school_id", "period", "event_time", "treated", "test_score")
+  ),
+  # --- Phase 10 datasets ------------------------------------------------------
+  master_sample_flow.csv = list(          # 3.19 CONSORT
+    numeric = "n",
+    text    = c("stage", "arm", "note"),
+    key     = c("stage", "n")
+  ),
+  master_district_scatter.csv = list(     # 3.22 quadrant scatter
+    numeric = c("spending_index", "outcome_score"),
+    text    = "district",
+    key     = c("district", "spending_index", "outcome_score")
+  ),
+  master_time_to_event.csv = list(        # 3.23 Kaplan-Meier
+    numeric = c("weeks", "dropped"),
+    text    = "group",
+    id      = "participant_id",
+    key     = c("group", "weeks", "dropped")
   )
 )
 
@@ -221,6 +238,45 @@ stress_templates <- list(
     args = list(row_var = "district", col_var = "year", value_var = "literacy_rate",
                 aggregate = "none", show_values = TRUE, metric_name = "Literacy Rate (%)"),
     nastiest = "all_na_cells"
+  ),
+  # --- Phase 10 templates -----------------------------------------------------
+  "3.19" = list(
+    template = "3.19_consort_flow.Rmd", fn = "viz_consort_flow",
+    data = "master_sample_flow.csv",
+    args = list(stage_var = "stage", n_var = "n", arm_var = "arm",
+                note_var = "note", metric_name = "Participant Flow"),
+    nastiest = "stages_out_of_order"
+  ),
+  "3.20" = list(
+    template = "3.20_balance_plot.Rmd", fn = "viz_balance_plot",
+    data = "master_micro_survey.csv",
+    args = list(treat_var = "treatment_group",
+                balance_vars = c("baseline_score", "gender", "income_tier"),
+                threshold = 0.1, metric_name = "Covariate Balance"),
+    nastiest = "constant_covariate"
+  ),
+  "3.21" = list(
+    template = "3.21_summary_table.Rmd", fn = "viz_summary_table",
+    data = "master_micro_survey.csv", table = TRUE,
+    args = list(group_var = "treatment_group",
+                summary_vars = c("baseline_score", "endline_score", "gender", "income_tier"),
+                digits = 1, metric_name = "Sample Characteristics"),
+    nastiest = "group_n1"
+  ),
+  "3.22" = list(
+    template = "3.22_scatter_quadrant.Rmd", fn = "viz_scatter_quadrant",
+    data = "master_district_scatter.csv",
+    args = list(x_var = "spending_index", y_var = "outcome_score",
+                label_var = "district", x_split = "median", y_split = "median",
+                metric_name = "Spending vs Outcomes"),
+    nastiest = "zero_variance_axis"
+  ),
+  "3.23" = list(
+    template = "3.23_survival_curve.Rmd", fn = "viz_survival_curve",
+    data = "master_time_to_event.csv",
+    args = list(time_var = "weeks", event_var = "dropped", group_var = "group",
+                show_ci = TRUE, metric_name = "Program Retention"),
+    nastiest = "all_censored"
   )
 )
 

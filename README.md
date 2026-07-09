@@ -15,7 +15,7 @@ optionally, stitches selected ones into a single combined report.
   (`2.5_helpers.R`), **all chart logic as `viz_*()` functions** (`2.6_viz_functions.R`),
   the config-driven production render (`2.2_master_knit.R`), the testing render
   (`2.4_test_knit.R`), and the CSS generator (`2.7_build_css.R`).
-* **/3_templates** — **The Factory:** 18 parameterized `.Rmd` templates (3.01–3.18),
+* **/3_templates** — **The Factory:** 23 parameterized `.Rmd` templates (3.01–3.23),
   one visualization each, plus the combined-report parent (`3.00_combined_report.Rmd`).
   Each template is a thin wrapper: it loads and validates the data, then calls its
   `viz_*()` function from `2_R/2.6_viz_functions.R` (chart code lives there, never in
@@ -142,7 +142,7 @@ Point `data_path` at any CSV in `1_data/`. The report shows dataset dimensions a
 duplicate/empty/single-row flags, a per-column profile (detected type, missingness,
 distinct count, stray whitespace, date-parse rate, 1.5×IQR outliers), a missingness
 chart, house-style per-column issue callouts, and a **deterministic template
-recommender** — a ranked list of which templates (3.01–3.18) the data can feed and which
+recommender** — a ranked list of which templates (3.01–3.23) the data can feed and which
 column maps to which `*_var` param. It only describes; it never changes your data. Field
 data stays local (`4_output/` and `3_templates/*.html` are gitignored; nothing calls an API).
 
@@ -169,6 +169,17 @@ Choose the right template for your policy narrative (set it as `template:` in th
 * **3.16 Event-Study Plot** — dynamic treatment effects around an event time (`fixest`).
 * **3.17 Small Multiples** — one small faceted panel per unit for at-a-glance comparison.
 * **3.18 Heatmap Matrix** — a row × column value grid (e.g. district × year).
+* **3.19 CONSORT Flow Diagram** — participant flow through trial stages (enrolled →
+  randomized → allocated → followed up → analyzed), with per-arm columns and
+  exclusion/attrition notes. Pure ggplot boxes + arrows (no DiagrammeR).
+* **3.20 Covariate Balance (Love Plot)** — standardized mean differences between
+  treatment and control across covariates, with |SMD| threshold lines.
+* **3.21 Summary Table (Table 1)** — grouped summary statistics via `gt`: numeric →
+  mean (SD), categorical → n (%), with an Overall column.
+* **3.22 Quadrant Scatter** — labeled two-axis scatter split into four quadrants at
+  each axis's median (or a fixed cut), points colored by quadrant (`ggrepel` labels).
+* **3.23 Kaplan-Meier Survival Curve** — time-to-event retention by group (`survival`),
+  step curves with optional 95% confidence ribbons.
 
 `3.00_combined_report.Rmd` is the parent that stitches the visuals you list under
 `combined.include` in the config into a single HTML report — you don't edit it directly.
@@ -176,7 +187,7 @@ Choose the right template for your policy narrative (set it as `template:` in th
 ## Changing Brand Colors
 
 All brand colors live in one file: **`2_R/theme_colors.yml`**. Edit a hex there and
-every chart across all 18 templates updates on the next render — you never touch R code.
+every chart across all 23 templates updates on the next render — you never touch R code.
 The five colors that also style the HTML page chrome (`bg`, `text`, `box`, `subtle`,
 `primary`) drive `2_R/cerp_style.css`, which is **generated** from the palette: after
 changing one of those, run `source(here::here("2_R", "2.7_build_css.R"))` once to

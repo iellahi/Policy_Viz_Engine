@@ -1,0 +1,9 @@
+stage,n,arm,note
+Assessed for eligibility,1200,,"Excluded (n = 300): did not meet inclusion criteria (210); declined to participate (90)"
+Randomized,900,,
+Allocated,450,Treatment,
+Allocated,450,Control,
+Completed follow-up,410,Treatment,Lost to follow-up (n = 40)
+Completed follow-up,405,Control,Lost to follow-up (n = 45)
+Analyzed,402,Treatment,Excluded from analysis (n = 8)
+Analyzed,398,Control,Excluded from analysis (n = 7)

@@ -1,0 +1,89 @@
+---
+title: "`r params$report_title`"
+author: "`r params$report_author`"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Engine flag: TRUE only when this template is stitched into the
+  # combined report (set by the parent). Leave false for normal renders.
+  combined_mode: false
+  # Master Data Path (one row per unit; treatment flag + covariates)
+  data_path: !r here::here("1_data", "master_micro_survey.csv")
+
+  # Variables
+  treat_var: "treatment_group"   # treatment flag (1/0 or "Treatment"/"Control")
+  # Covariates to check for balance (list). Numeric -> SMD; categorical -> per-level
+  # proportion difference. NOTE: this is a LIST param, validated explicitly below.
+  balance_vars:
+    - baseline_score
+    - gender
+    - income_tier
+  # |SMD| reference threshold for flagging imbalance
+  threshold: 0.1
+
+  # Policy-Facing Labels
+  metric_name: "Covariate Balance"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Randomization Check: Covariate Balance (Love Plot)"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = !isTRUE(params$combined_mode),
+  warning = FALSE,
+  message = FALSE,
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
+  fig.width = 9,
+  fig.height = 5,
+  fig.retina = 3
+)
+```
+
+```{r cerp-style, echo=FALSE, results='asis', eval=!isTRUE(params$combined_mode)}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
+```{r load-and-prep}
+library(tidyverse)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# balance_vars is a LIST param (does not end in _var), so validate it alongside
+# the generic *_var params. All SMD math + plotting lives in viz_balance_plot().
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, c(params[grepl("_var$", names(params))], params$balance_vars))
+
+# Build now so the plot chunk can size fig.height from the number of points.
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
+
+p <- viz_balance_plot(
+  data           = raw_data,
+  treat_var      = params$treat_var,
+  balance_vars   = params$balance_vars,
+  threshold      = params$threshold,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  x_label        = params$x_label,
+  y_label        = params$y_label,
+  source_note    = params$source_note
+)
+```
+
+
+```{r plot-balance, fig.height=max(4, 1.5 + 0.45 * nrow(p$data))}
+p
+```

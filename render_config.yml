@@ -225,6 +225,78 @@ reports:
       metric_name: "Literacy Rate (%)"
       report_title: "District × Year: Heatmap Matrix"
 
+  # --- Phase 10 templates (RCT reporting narrative) ----------------------------
+
+  - id: consort_flow
+    template: 3.19_consort_flow.Rmd
+    data: master_sample_flow.csv
+    enabled: true
+    params:
+      stage_var: stage
+      n_var: "n"          # quote: bare `n` is YAML-boolean false
+      arm_var: arm
+      note_var: note
+      metric_name: "Participant Flow"
+      report_title: "Trial Profile: CONSORT Flow Diagram"
+
+  - id: balance_plot
+    template: 3.20_balance_plot.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      treat_var: treatment_group
+      balance_vars:
+        - baseline_score
+        - gender
+        - income_tier
+      threshold: 0.1
+      metric_name: "Covariate Balance"
+      report_title: "Randomization Check: Covariate Balance (Love Plot)"
+
+  - id: summary_table
+    template: 3.21_summary_table.Rmd
+    data: master_micro_survey.csv
+    enabled: true
+    params:
+      group_var: treatment_group
+      summary_vars:
+        - baseline_score
+        - endline_score
+        - gender
+        - income_tier
+      digits: 1
+      metric_name: "Sample Characteristics"
+      report_title: "Table 1: Grouped Summary Statistics"
+
+  - id: scatter_quadrant
+    template: 3.22_scatter_quadrant.Rmd
+    data: master_district_scatter.csv
+    enabled: true
+    params:
+      x_var: spending_index
+      y_var: outcome_score
+      label_var: district
+      x_split: "median"
+      y_split: "median"
+      quadrant_label_tr: "High spend · High outcome"
+      quadrant_label_tl: "Efficient: low spend, high outcome"
+      quadrant_label_br: "Underperforming: high spend, low outcome"
+      quadrant_label_bl: "Low spend · Low outcome"
+      metric_name: "Spending vs Outcomes"
+      report_title: "Where Does the Money Work? Quadrant Scatter"
+
+  - id: survival_curve
+    template: 3.23_survival_curve.Rmd
+    data: master_time_to_event.csv
+    enabled: true
+    params:
+      time_var: weeks
+      event_var: dropped
+      group_var: group
+      show_ci: true
+      metric_name: "Program Retention"
+      report_title: "Who Stays Enrolled? Kaplan-Meier Survival Curve"
+
 # ------------------------------------------------------------------------------
 # Combined report: stitches selected visuals into ONE self-contained HTML.
 #   enabled  build it or not (individual reports above render regardless).
@@ -266,3 +338,8 @@ combined:
     - event_study          # 3.16 event-study plot
     - small_multiples      # 3.17 small multiples
     - heatmap_matrix       # 3.18 heatmap matrix
+    - consort_flow         # 3.19 CONSORT flow diagram
+    - balance_plot         # 3.20 covariate balance love plot
+    - summary_table        # 3.21 Table-1 grouped summary (gt)
+    - scatter_quadrant     # 3.22 quadrant scatter
+    - survival_curve       # 3.23 Kaplan-Meier survival curve

@@ -1,0 +1,81 @@
+---
+title: "`r params$report_title`"
+author: "`r params$report_author`"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Engine flag: TRUE only when this template is stitched into the
+  # combined report (set by the parent). Leave false for normal renders.
+  combined_mode: false
+  # Master Data Path (one row per trial stage)
+  data_path: !r here::here("1_data", "master_sample_flow.csv")
+
+  # Variables
+  stage_var: "stage"   # stage name (order in the file = top-to-bottom of flow)
+  n_var: "n"           # participant count at that stage
+  arm_var: "arm"       # optional: post-randomization arm ("" = spine). Leave "" to disable.
+  note_var: "note"     # optional: exclusion / attrition note ("" = none). Leave "" to disable.
+
+  # Policy-Facing Labels
+  metric_name: "Participant Flow"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Trial Profile: CONSORT Flow Diagram"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  source_note: "Generated via CERP Analytics Template"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = !isTRUE(params$combined_mode),
+  warning = FALSE,
+  message = FALSE,
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
+  fig.width = 11,
+  fig.height = 6.5,
+  fig.retina = 3
+)
+```
+
+```{r cerp-style, echo=FALSE, results='asis', eval=!isTRUE(params$combined_mode)}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
+```{r load-and-prep}
+library(tidyverse)
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All layout + drawing lives in viz_consort_flow() (2_R/2.6_viz_functions.R).
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
+
+# Size fig.height below from the number of stages actually present.
+n_stages <- dplyr::n_distinct(stringr::str_squish(as.character(raw_data[[params$stage_var]])))
+```
+
+
+```{r plot-consort, fig.height=max(4.5, 1 + 1.15 * n_stages)}
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
+
+# Thin wrapper: map the YAML params into viz_consort_flow() and print the ggplot.
+viz_consort_flow(
+  data           = raw_data,
+  stage_var      = params$stage_var,
+  n_var          = params$n_var,
+  arm_var        = params$arm_var,
+  note_var       = params$note_var,
+  metric_name    = params$metric_name,
+  chart_title    = params$chart_title,
+  chart_subtitle = params$chart_subtitle,
+  source_note    = params$source_note
+)
+```

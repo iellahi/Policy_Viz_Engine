@@ -43,7 +43,8 @@ source(here::here("5_tests", "stress_spec.R"))
 
 # Attach the same optional packages the wrappers attach, so unqualified geoms
 # (ggridges) and dispatch (sf, fixest) resolve exactly as in a real render.
-cerp_require(c("ggrepel", "ggridges", "sf", "fixest", "cli"))
+# gt + survival are the phase-10 additions (summary table + Kaplan-Meier).
+cerp_require(c("ggrepel", "ggridges", "sf", "fixest", "gt", "survival", "cli"))
 
 # --- paths --------------------------------------------------------------------
 data_dir      <- here::here("1_data")
@@ -115,7 +116,11 @@ run_case <- function(entry, variant_file, expect, targets, note) {
         }
 
         p <- do.call(fn, arglist)
-        invisible(ggplot2::ggplot_build(p))         # FORCE lazy plot to compute
+        # FORCE the (lazy) output to actually compute so a build-time error can't
+        # masquerade as a pass. gt tables build via as_raw_html; ggplots via
+        # ggplot_build (3.21 returns a gt object, not a ggplot).
+        if (inherits(p, "gt_tbl")) invisible(gt::as_raw_html(p))
+        else invisible(ggplot2::ggplot_build(p))
         "success"
       },
       warning = function(w) {

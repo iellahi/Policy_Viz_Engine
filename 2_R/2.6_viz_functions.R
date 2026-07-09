@@ -1672,3 +1672,578 @@ viz_heatmap_matrix <- function(data,
 
   p
 }
+
+# ==============================================================================
+# PHASE 10 — RCT reporting-narrative templates (3.19–3.23). Born as functions,
+# adopting the Phase-4B carry-forward conventions from day one: every numeric
+# input goes through cerp_numeric(), and each function opens with a
+# cerp_require_rows() usable-row guard so empty / all-NA input fails loudly
+# instead of drawing a silently-wrong chart.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# viz_consort_flow() — 3.19 CONSORT participant-flow diagram. Boxes + connecting
+# arrows drawn purely with ggplot geom_rect/segment/text (NO DiagrammeR/grViz).
+# One row per stage; an optional arm_var splits the flow into parallel columns
+# after randomization, and an optional note_var prints exclusion/attrition notes
+# to the right of the stage they belong to.
+# ------------------------------------------------------------------------------
+viz_consort_flow <- function(data,
+                             stage_var, n_var, arm_var = "", note_var = "",
+                             metric_name = "Participant Flow",
+                             chart_title = "", chart_subtitle = "",
+                             source_note = "") {
+
+  has_arm  <- nzchar(arm_var)  && arm_var  %in% names(data)
+  has_note <- nzchar(note_var) && note_var %in% names(data)
+
+  df <- data %>%
+    mutate(
+      Stage = str_squish(as.character(.data[[stage_var]])),
+      N     = cerp_numeric(.data[[n_var]], n_var),
+      Arm   = if (has_arm)  str_squish(as.character(.data[[arm_var]]))  else "",
+      Note  = if (has_note) str_squish(as.character(.data[[note_var]])) else ""
+    ) %>%
+    mutate(Arm  = ifelse(is.na(Arm),  "", Arm),
+           Note = ifelse(is.na(Note), "", Note)) %>%
+    filter(!is.na(Stage), nzchar(Stage))
+
+  # Usable-row guard (4B convention): need at least one stage with a count.
+  cerp_require_rows(df, c(stage_var, n_var), min_rows = 1, what = metric_name)
+  df <- df %>% drop_na(N)
+
+  # Stage order = first appearance in the file (top -> bottom of the flow).
+  stage_levels <- unique(df$Stage)
+  df <- df %>% mutate(y = -match(Stage, stage_levels))
+
+  # Arm columns: a blank arm sits on the central spine (x = 0); named arms are
+  # spread symmetrically left-to-right (a single named arm stays centered).
+  arms   <- sort(unique(df$Arm[nzchar(df$Arm)]))
+  n_arms <- length(arms)
+  arm_x  <- if (n_arms > 1) setNames(seq(-1.7, 1.7, length.out = n_arms), arms)
+            else if (n_arms == 1) setNames(0, arms) else numeric(0)
+  x_of   <- function(a) if (nzchar(a) && a %in% names(arm_x)) unname(arm_x[[a]]) else 0
+  df <- df %>% mutate(x = vapply(Arm, x_of, numeric(1)), .row = row_number())
+
+  # Colour cue by arm: treatment-like arms take the primary hue, everything else
+  # the muted neutral; the spine is the pale box tint. Boxes stay uniform fill;
+  # the border + the column header carry the colour so the page stays quiet.
+  arm_hue <- function(a) if (str_detect(str_to_lower(a), "treat|interven|program|program"))
+    unname(cerp_cols["primary"]) else unname(cerp_cols["neutral"])
+  border_of <- function(a) if (nzchar(a)) arm_hue(a) else unname(cerp_cols["primary"])
+
+  bw <- 1.55; bh <- 0.42
+  boxes <- df %>%
+    mutate(
+      xmin = x - bw/2, xmax = x + bw/2,
+      ymin = y - bh/2, ymax = y + bh/2,
+      Border = vapply(Arm, border_of, character(1)),
+      Label  = paste0(Stage, "\n(n = ", scales::comma(round(N)), ")")
+    )
+
+  # Arrows: for each consecutive stage pair, connect every child to its parent —
+  # a same-arm parent if one exists at the level above, else the spine box (this
+  # is what makes randomization branch into the two arm columns).
+  seg_list <- list()
+  for (i in seq_len(length(stage_levels) - 1)) {
+    parents  <- boxes %>% filter(Stage == stage_levels[i])
+    children <- boxes %>% filter(Stage == stage_levels[i + 1])
+    for (k in seq_len(nrow(children))) {
+      ch <- children[k, ]
+      par <- parents %>% filter(Arm == ch$Arm)
+      if (nrow(par) == 0) par <- parents %>% filter(!nzchar(Arm))
+      if (nrow(par) == 0) par <- parents[1, ]
+      if (nrow(par) == 0) next
+      par <- par[1, ]
+      seg_list[[length(seg_list) + 1]] <- data.frame(
+        x = par$x, xend = ch$x, y = par$ymin, yend = ch$ymax)
+    }
+  }
+  segs <- if (length(seg_list)) do.call(rbind, seg_list) else
+    data.frame(x = numeric(0), xend = numeric(0), y = numeric(0), yend = numeric(0))
+
+  # Notes: a boxed callout on the far right, wired to its stage with an elbow.
+  x_note <- max(boxes$xmax) + 0.55
+  notes <- boxes %>% filter(nzchar(Note)) %>%
+    mutate(nx = x_note, Note_wrapped = str_wrap(Note, width = 34))
+
+  # Arm column headers, above the first split stage.
+  headers <- if (n_arms > 0) {
+    tibble(Arm = arms, x = unname(arm_x[arms]), y = max(boxes$y) + 0.75,
+           hue = vapply(arms, arm_hue, character(1)))
+  } else NULL
+
+  x_min_lim <- min(boxes$xmin) - 0.3
+  x_max_lim <- if (nrow(notes) > 0) x_note + 2.4 else max(boxes$xmax) + 0.3
+
+  p <- ggplot() +
+    # connectors first, arrowheads pointing into each child box
+    geom_segment(data = segs, aes(x = x, xend = xend, y = y, yend = yend),
+                 color = cerp_cols[["neutral"]], linewidth = 0.6,
+                 arrow = arrow(length = unit(0.16, "cm"), type = "closed")) +
+    # note connectors (horizontal elbow to the right rail)
+    { if (nrow(notes) > 0) geom_segment(
+        data = notes, aes(x = xmax, xend = nx - 0.02, y = y, yend = y),
+        color = cerp_cols[["accent"]], linewidth = 0.4, linetype = "dotted") } +
+    # stage boxes
+    geom_rect(data = boxes,
+              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, color = Border),
+              fill = cerp_cols[["box"]], linewidth = 0.7) +
+    geom_text(data = boxes, aes(x = x, y = y, label = Label),
+              family = cerp_font_caption, size = 3.3, lineheight = 0.95,
+              color = cerp_cols[["text"]], fontface = "bold") +
+    # note callouts
+    { if (nrow(notes) > 0) geom_label(
+        data = notes, aes(x = nx, y = y, label = Note_wrapped),
+        hjust = 0, family = cerp_font_caption, size = 2.8, lineheight = 0.95,
+        color = cerp_cols[["text"]], fill = "#fbeee9",
+        label.size = 0, label.padding = unit(0.28, "lines")) } +
+    scale_color_identity() +
+    coord_cartesian(xlim = c(x_min_lim, x_max_lim), clip = "off") +
+    theme_cerp() +
+    theme(
+      axis.text = element_blank(), axis.title = element_blank(),
+      panel.grid = element_blank(), axis.ticks = element_blank(),
+      legend.position = "none"
+    ) +
+    labs(
+      title    = if (nzchar(chart_title)) chart_title else metric_name,
+      subtitle = if (nzchar(chart_subtitle)) chart_subtitle else
+        "Flow of participants through each stage of the trial. Counts (n) shown per box; notes list exclusions and losses.",
+      caption  = source_note
+    )
+
+  # Column headers drawn on top (after theme so colour is explicit).
+  if (!is.null(headers)) {
+    p <- p + geom_text(data = headers, aes(x = x, y = y, label = Arm, color = hue),
+                       family = cerp_font_caption, fontface = "bold", size = 3.7) +
+      scale_color_identity()
+  }
+  p
+}
+
+# ------------------------------------------------------------------------------
+# viz_balance_plot() — 3.20 covariate-balance "love plot". Standardized mean
+# difference (treatment − control) per covariate, one point each, sorted by
+# magnitude, with |SMD| = threshold reference lines. SMD is computed in-code (no
+# cobalt): numeric covariates use (mean_T − mean_C) / pooled SD; categorical
+# covariates are expanded to per-level indicators using the raw difference in
+# proportions (the first level is the dropped reference).
+# ------------------------------------------------------------------------------
+viz_balance_plot <- function(data,
+                             treat_var, balance_vars, threshold = 0.1,
+                             metric_name = "Covariate Balance",
+                             chart_title = "", chart_subtitle = "",
+                             x_label = "", y_label = "", source_note = "") {
+
+  balance_vars <- unlist(balance_vars, use.names = FALSE)
+  balance_vars <- balance_vars[!is.na(balance_vars) & nzchar(balance_vars)]
+
+  d <- data %>%
+    mutate(.trt = if_else(
+      str_detect(str_to_lower(str_trim(as.character(.data[[treat_var]]))),
+                 "^(1|treat|interven|yes|received|true|t)$|treat|interven"),
+      1L, 0L)) %>%
+    filter(!is.na(.trt))
+
+  # Guard: need usable rows and BOTH arms (else an SMD is undefined).
+  cerp_require_rows(d, treat_var, min_rows = 2, what = metric_name)
+  if (length(unique(d$.trt)) < 2) {
+    stop("Balance plot needs BOTH a treatment and a control group in '",
+         treat_var, "', but only one was found after coercion.", call. = FALSE)
+  }
+
+  # Per-covariate SMD (numeric) or per-level proportion difference (categorical).
+  smd_rows <- function(var) {
+    x  <- d[[var]]
+    tv <- d$.trt
+    keep <- !is.na(x)
+    x <- x[keep]; tv <- tv[keep]
+    if (length(x) == 0) return(NULL)
+
+    # Probe the type SILENTLY (a categorical covariate would otherwise trigger a
+    # spurious all-NA coercion warning); once we commit to numeric, re-coerce
+    # VISIBLY so genuine numbers-as-text loss warns (4B warn-only convention).
+    parsed  <- suppressWarnings(cerp_numeric(x, var))
+    is_num  <- is.numeric(x) || mean(!is.na(parsed)) >= 0.8
+    n_dist  <- length(unique(x))
+
+    if (is_num && n_dist > 2) {
+      parsed <- cerp_numeric(x, var)
+      xt <- parsed[tv == 1]; xc <- parsed[tv == 0]
+      pooled <- sqrt((stats::sd(xt, na.rm = TRUE)^2 + stats::sd(xc, na.rm = TRUE)^2) / 2)
+      smd <- if (is.na(pooled) || pooled == 0) 0 else
+        (mean(xt, na.rm = TRUE) - mean(xc, na.rm = TRUE)) / pooled
+      tibble(term = var, smd = smd)
+    } else {
+      lv <- levels(factor(x))
+      lv <- lv[-1]                                   # drop first level = reference
+      if (length(lv) == 0) return(NULL)
+      map_dfr(lv, function(l) {
+        pt <- mean(x[tv == 1] == l); pc <- mean(x[tv == 0] == l)
+        tibble(term = paste0(var, ": ", l), smd = pt - pc)
+      })
+    }
+  }
+
+  plot_data <- map_dfr(balance_vars, smd_rows) %>%
+    drop_na(smd) %>%
+    mutate(
+      Imbalanced = ifelse(abs(smd) > threshold, "Above threshold", "Balanced"),
+      term = fct_reorder(term, abs(smd))
+    )
+
+  if (nrow(plot_data) == 0) {
+    stop("No covariates in balance_vars produced a usable SMD — check the ",
+         "column names and that they contain non-missing values.", call. = FALSE)
+  }
+
+  n_flag <- sum(plot_data$Imbalanced == "Above threshold")
+
+  ggplot(plot_data, aes(x = smd, y = term)) +
+    geom_vline(xintercept = 0, color = cerp_cols[["text"]], linewidth = 0.8) +
+    geom_vline(xintercept = c(-threshold, threshold), color = cerp_cols[["accent"]],
+               linetype = "dashed", linewidth = 0.6) +
+    geom_segment(aes(x = 0, xend = smd, yend = term),
+                 color = cerp_cols[["grid"]], linewidth = 0.5) +
+    geom_point(aes(color = Imbalanced), size = 4) +
+    scale_color_manual(values = c(
+      "Above threshold" = unname(cerp_cols["accent"]),
+      "Balanced"        = unname(cerp_cols["primary"]))) +
+    scale_x_continuous(labels = scales::number_format(accuracy = 0.01)) +
+    theme_cerp() +
+    theme(
+      legend.position = "top",
+      axis.text.y = element_text(size = 11, face = "bold", color = cerp_cols[["text"]]),
+      panel.grid.major.y = element_blank()
+    ) +
+    labs(
+      title    = if (nzchar(chart_title)) chart_title else paste0(metric_name, ": Treatment vs Control"),
+      subtitle = if (nzchar(chart_subtitle)) chart_subtitle else paste0(
+        "Standardized mean difference per covariate. Dashed lines mark |SMD| = ",
+        threshold, "; ", n_flag, " covariate(s) exceed it."),
+      x = if (nzchar(x_label)) x_label else "Standardized mean difference (Treatment − Control)",
+      y = if (nzchar(y_label)) y_label else NULL,
+      caption  = source_note
+    )
+}
+
+# ------------------------------------------------------------------------------
+# cerp_gt_theme() — house style for gt tables (Design.md palette + fonts), kept
+# next to the viz functions so any future gt table reuses one styling surface.
+# ------------------------------------------------------------------------------
+cerp_gt_theme <- function(gt_tbl) {
+  gt_tbl %>%
+    gt::opt_table_font(font = c(cerp_font_body, "Georgia", "serif")) %>%
+    gt::tab_options(
+      table.background.color        = cerp_cols[["bg"]],
+      table.font.color              = cerp_cols[["text"]],
+      table.border.top.style        = "none",
+      table.border.bottom.color     = cerp_cols[["text"]],
+      heading.title.font.size       = gt::px(20),
+      heading.title.font.weight     = "bold",
+      heading.subtitle.font.size    = gt::px(13),
+      heading.align                 = "left",
+      column_labels.font.weight     = "bold",
+      column_labels.background.color = cerp_cols[["box"]],
+      column_labels.border.top.style = "none",
+      column_labels.border.bottom.color = cerp_cols[["text"]],
+      row_group.font.weight         = "bold",
+      row_group.background.color    = cerp_cols[["bg"]],
+      table_body.hlines.color       = cerp_cols[["grid"]],
+      table.font.size               = gt::px(13),
+      source_notes.font.size        = gt::px(10),
+      data_row.padding              = gt::px(5)
+    ) %>%
+    gt::tab_style(
+      style = gt::cell_text(color = cerp_cols[["subtle"]]),
+      locations = gt::cells_row_groups()
+    )
+}
+
+# ------------------------------------------------------------------------------
+# viz_summary_table() — 3.21 Table-1-style grouped summary via gt (RETURNS a gt
+# object, not a ggplot). Numeric summary vars -> mean (sd); categorical -> n (%)
+# per level. Columns are the groups plus an Overall column, each headed with its
+# N. Requires gt (attached/guarded by the wrapper); referenced namespaced here.
+# ------------------------------------------------------------------------------
+viz_summary_table <- function(data,
+                              group_var, summary_vars, digits = 1,
+                              metric_name = "Sample Summary",
+                              chart_title = "", chart_subtitle = "",
+                              source_note = "") {
+
+  summary_vars <- unlist(summary_vars, use.names = FALSE)
+  summary_vars <- summary_vars[!is.na(summary_vars) & nzchar(summary_vars)]
+
+  d <- data %>%
+    mutate(.grp = str_squish(as.character(.data[[group_var]]))) %>%
+    filter(!is.na(.grp), nzchar(.grp))
+
+  cerp_require_rows(d, group_var, min_rows = 1, what = metric_name)
+
+  groups   <- sort(unique(d$.grp))
+  grp_cols <- c(groups, "Overall")
+  n_by_grp <- c(vapply(groups, function(g) sum(d$.grp == g), integer(1)), nrow(d))
+  names(n_by_grp) <- grp_cols
+
+  num_fmt <- function(v) formatC(v, format = "f", digits = digits)
+  # SD is undefined for a group of n = 1 (sd() -> NA); render it as an em dash
+  # rather than a bare "NA" in the table cell.
+  fmt_sd  <- function(v) if (is.na(v)) "—" else num_fmt(v)
+
+  # One tidy long block per summary variable: numeric = single "mean (sd)" row;
+  # categorical = one "n (%)" row per level, under a variable row group.
+  block_for <- function(var) {
+    x <- d[[var]]
+    # Probe type SILENTLY (a categorical column would otherwise warn on all-NA
+    # coercion); re-coerce VISIBLY once numeric so real numbers-as-text loss
+    # warns (4B warn-only convention).
+    parsed <- suppressWarnings(cerp_numeric(x, var))
+    is_num <- is.numeric(x) || mean(!is.na(parsed)) >= 0.8
+    n_dist <- length(unique(x[!is.na(x)]))
+
+    if (is_num && n_dist > 2) {
+      parsed <- cerp_numeric(x, var)
+      vals <- vapply(grp_cols, function(g) {
+        idx <- if (g == "Overall") rep(TRUE, nrow(d)) else d$.grp == g
+        xv <- parsed[idx]
+        paste0(num_fmt(mean(xv, na.rm = TRUE)), " (", fmt_sd(stats::sd(xv, na.rm = TRUE)), ")")
+      }, character(1))
+      out <- tibble(group_label = paste0(var, ", mean (SD)"), label = "")
+      for (g in grp_cols) out[[g]] <- vals[[g]]
+      out
+    } else {
+      lv <- levels(factor(x))
+      map_dfr(lv, function(l) {
+        vals <- vapply(grp_cols, function(g) {
+          idx <- if (g == "Overall") rep(TRUE, nrow(d)) else d$.grp == g
+          xv <- x[idx]; denom <- sum(!is.na(xv))
+          cnt <- sum(xv == l, na.rm = TRUE)
+          pct <- if (denom > 0) 100 * cnt / denom else 0
+          paste0(scales::comma(cnt), " (", num_fmt(pct), "%)")
+        }, character(1))
+        row <- tibble(group_label = paste0(var, ", n (%)"), label = l)
+        for (g in grp_cols) row[[g]] <- vals[[g]]
+        row
+      })
+    }
+  }
+
+  tbl <- map_dfr(summary_vars, block_for)
+
+  col_labels <- setNames(
+    lapply(grp_cols, function(g) gt::md(paste0("**", g, "**<br>N = ", scales::comma(n_by_grp[[g]])))),
+    grp_cols)
+
+  gt_out <- tbl %>%
+    gt::gt(groupname_col = "group_label", rowname_col = "label") %>%
+    gt::tab_header(
+      title    = if (nzchar(chart_title)) chart_title else metric_name,
+      subtitle = if (nzchar(chart_subtitle)) chart_subtitle else
+        paste0("Grouped by ", group_var, ". Numeric variables show mean (SD); categorical variables show n (%).")
+    ) %>%
+    gt::cols_label(.list = col_labels) %>%
+    gt::cols_align(align = "right", columns = tidyselect::all_of(grp_cols)) %>%
+    gt::cols_align(align = "left", columns = "label")
+
+  if (nzchar(source_note)) gt_out <- gt_out %>% gt::tab_source_note(source_note)
+
+  cerp_gt_theme(gt_out)
+}
+
+# ------------------------------------------------------------------------------
+# viz_scatter_quadrant() — 3.22 labeled scatter split into four quadrants by a
+# vertical x-split and a horizontal y-split (default: the median of each axis).
+# Points are coloured by quadrant (muted house palette) and labeled with ggrepel;
+# optional corner captions name each quadrant. Requires ggrepel (attached by the
+# wrapper); referenced namespaced here.
+# ------------------------------------------------------------------------------
+viz_scatter_quadrant <- function(data,
+                                 x_var, y_var, label_var,
+                                 x_split = "median", y_split = "median",
+                                 quadrant_label_tr = "", quadrant_label_tl = "",
+                                 quadrant_label_br = "", quadrant_label_bl = "",
+                                 metric_name = "",
+                                 chart_title = "", chart_subtitle = "",
+                                 x_label = "", y_label = "", source_note = "") {
+
+  what <- if (nzchar(metric_name)) metric_name else "this scatter"
+
+  # Usable-row guard (4B convention): guard on the ORIGINAL params (not the
+  # internal X/Y) so the error names real columns and reads clearly.
+  cerp_require_rows(data, c(x_var, y_var), min_rows = 1, what = what)
+
+  d <- data %>%
+    mutate(
+      X     = cerp_numeric(.data[[x_var]], x_var),
+      Y     = cerp_numeric(.data[[y_var]], y_var),
+      Label = str_squish(as.character(.data[[label_var]]))
+    ) %>%
+    drop_na(X, Y)
+
+  # Second guard for the all-unparseable case (numbers-as-text that all coerce to
+  # NA): fail loudly naming the axis columns rather than drawing an empty panel.
+  if (nrow(d) == 0) {
+    stop(what, " has no rows with usable numeric '", x_var, "' and '", y_var,
+         "' after coercion. Check those columns in the data file.", call. = FALSE)
+  }
+
+  # Resolve each split: "median" (default), "mean", or a fixed numeric value.
+  resolve_split <- function(s, v) {
+    key <- tolower(str_trim(as.character(s)))
+    if (length(key) == 0 || key %in% c("", "median")) stats::median(v, na.rm = TRUE)
+    else if (key == "mean") mean(v, na.rm = TRUE)
+    else {
+      num <- suppressWarnings(as.numeric(s))
+      if (is.na(num)) stats::median(v, na.rm = TRUE) else num
+    }
+  }
+  xs <- resolve_split(x_split, d$X)
+  ys <- resolve_split(y_split, d$Y)
+
+  d <- d %>% mutate(
+    Quadrant = case_when(
+      X >= xs & Y >= ys ~ "tr",
+      X <  xs & Y >= ys ~ "tl",
+      X >= xs & Y <  ys ~ "br",
+      TRUE              ~ "bl"
+    )
+  )
+
+  # Muted house palette, one per quadrant (Design.md).
+  quad_cols <- c(tr = unname(cerp_cols["primary"]),
+                 tl = unname(cerp_cols["secondary"]),
+                 br = unname(cerp_cols["accent"]),
+                 bl = unname(cerp_cols["neutral"]))
+
+  # Corner captions, drawn only where a label was supplied.
+  x_lo <- min(d$X); x_hi <- max(d$X); y_lo <- min(d$Y); y_hi <- max(d$Y)
+  corners <- tibble::tribble(
+    ~key,  ~label,             ~x,   ~y,   ~hjust, ~vjust,
+    "tr",  quadrant_label_tr,  x_hi, y_hi,  1,      1,
+    "tl",  quadrant_label_tl,  x_lo, y_hi,  0,      1,
+    "br",  quadrant_label_br,  x_hi, y_lo,  1,      0,
+    "bl",  quadrant_label_bl,  x_lo, y_lo,  0,      0
+  ) %>% filter(nzchar(label))
+
+  p <- ggplot(d, aes(x = X, y = Y)) +
+    geom_vline(xintercept = xs, color = cerp_cols[["text"]],
+               linetype = "dashed", linewidth = 0.6) +
+    geom_hline(yintercept = ys, color = cerp_cols[["text"]],
+               linetype = "dashed", linewidth = 0.6) +
+    geom_point(aes(color = Quadrant), size = 3.4, alpha = 0.9) +
+    ggrepel::geom_text_repel(
+      aes(label = Label), size = 3.2, family = cerp_font_caption,
+      color = cerp_cols[["text"]], max.overlaps = 20,
+      box.padding = 0.3, point.padding = 0.2,
+      segment.color = "#b7c9d3", segment.size = 0.3, seed = 26) +
+    scale_color_manual(values = quad_cols, guide = "none") +
+    theme_cerp() +
+    labs(
+      title    = if (nzchar(chart_title)) chart_title else
+        paste0(str_to_title(y_var), " vs ", str_to_title(x_var)),
+      subtitle = if (nzchar(chart_subtitle)) chart_subtitle else
+        "Dashed lines split the field at each axis; points are colored by quadrant.",
+      x = if (nzchar(x_label)) x_label else str_to_title(x_var),
+      y = if (nzchar(y_label)) y_label else str_to_title(y_var),
+      caption  = source_note
+    )
+
+  if (nrow(corners) > 0) {
+    p <- p + geom_label(
+      data = corners,
+      aes(x = x, y = y, label = str_wrap(label, 22), hjust = hjust, vjust = vjust),
+      inherit.aes = FALSE, family = cerp_font_caption, fontface = "bold",
+      size = 3.1, color = cerp_cols[["subtle"]], fill = cerp_cols[["box"]],
+      label.size = 0, alpha = 0.85)
+  }
+  p
+}
+
+# ------------------------------------------------------------------------------
+# viz_survival_curve() — 3.23 Kaplan-Meier time-to-event by group. Fits with
+# survival::survfit, tidies the fit manually into a step table (with a t0 = 1.0
+# anchor per group), and draws step curves with optional stepped CI ribbons.
+# `event_var` is coerced to 1 (event) / 0 (censored) via cerp_numeric with a
+# text fallback. Requires survival (attached/guarded by the wrapper).
+# ------------------------------------------------------------------------------
+viz_survival_curve <- function(data,
+                               time_var, event_var, group_var, show_ci = TRUE,
+                               metric_name = "Retention",
+                               chart_title = "", chart_subtitle = "",
+                               x_label = "", y_label = "", source_note = "") {
+
+  ev_num <- suppressWarnings(cerp_numeric(data[[event_var]], event_var))
+  d <- data %>%
+    mutate(
+      Time  = cerp_numeric(.data[[time_var]], time_var),
+      Event = case_when(
+        !is.na(ev_num) ~ as.integer(ev_num >= 1),
+        str_detect(str_to_lower(as.character(.data[[event_var]])),
+                   "yes|event|true|drop|died|left|1") ~ 1L,
+        TRUE ~ 0L),
+      Group = str_squish(as.character(.data[[group_var]]))
+    ) %>%
+    filter(!is.na(Time), !is.na(Group), nzchar(Group))
+
+  # Usable-row guard (4B convention).
+  cerp_require_rows(d, c(time_var, group_var), min_rows = 1, what = metric_name)
+  d <- d %>% drop_na(Time, Event)
+
+  # Kaplan-Meier by group; tidy the fit manually (survfit strata are positional).
+  fit <- survival::survfit(survival::Surv(Time, Event) ~ Group, data = d)
+  strata_lab <- sub("^Group=", "", rep(names(fit$strata), fit$strata))
+  km <- tibble(
+    time  = fit$time,
+    surv  = fit$surv,
+    lower = if (!is.null(fit$lower)) fit$lower else NA_real_,
+    upper = if (!is.null(fit$upper)) fit$upper else NA_real_,
+    Group = strata_lab
+  )
+  # Anchor every curve at (t = 0, S = 1) so the step starts at 100%.
+  starts <- km %>% distinct(Group) %>%
+    mutate(time = 0, surv = 1, lower = 1, upper = 1)
+  km <- bind_rows(starts, km) %>% arrange(Group, time)
+
+  n_groups   <- dplyr::n_distinct(km$Group)
+  grp_colors <- setNames(cerp_fill_n(n_groups), sort(unique(km$Group)))
+
+  p <- ggplot(km, aes(x = time, y = surv, color = Group))
+
+  # Optional stepped CI ribbon: expand each interval to a flat segment so the
+  # ribbon steps with the curve instead of interpolating diagonally.
+  if (isTRUE(show_ci) && !all(is.na(km$lower))) {
+    ribbon <- km %>% group_by(Group) %>% arrange(time) %>%
+      mutate(t2 = lead(time)) %>% ungroup() %>% filter(!is.na(t2)) %>%
+      { bind_rows(transmute(., Group, t = time,  lower, upper),
+                  transmute(., Group, t = t2,    lower, upper)) } %>%
+      arrange(Group, t)
+    # Only add the ribbon layer + its fill scale when it actually has rows;
+    # otherwise ggplot warns about a manual scale with no matching data
+    # (degenerate single-observation input).
+    if (nrow(ribbon) > 0) {
+      p <- p + geom_ribbon(
+        data = ribbon, inherit.aes = FALSE,
+        aes(x = t, ymin = lower, ymax = upper, fill = Group),
+        alpha = 0.15, color = NA) +
+        scale_fill_manual(values = grp_colors, guide = "none")
+    }
+  }
+
+  p +
+    geom_step(linewidth = 1.1) +
+    scale_color_manual(values = grp_colors) +
+    scale_y_continuous(labels = scales::percent, limits = c(0, 1),
+                       expand = expansion(mult = c(0, 0.02))) +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.02))) +
+    theme_cerp() +
+    labs(
+      title    = if (nzchar(chart_title)) chart_title else paste("Time to Event:", metric_name),
+      subtitle = if (nzchar(chart_subtitle)) chart_subtitle else
+        "Share still event-free over time (Kaplan-Meier). Shaded bands are 95% confidence intervals.",
+      x = if (nzchar(x_label)) x_label else str_to_title(time_var),
+      y = if (nzchar(y_label)) y_label else paste0("Share event-free"),
+      caption  = source_note
+    )
+}

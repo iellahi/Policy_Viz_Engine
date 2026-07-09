@@ -1,0 +1,102 @@
+---
+title: "`r params$report_title`"
+author: "`r params$report_author`"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: false
+    code_folding: hide
+params:
+  # Engine flag: TRUE only when this template is stitched into the
+  # combined report (set by the parent). Leave false for normal renders.
+  combined_mode: false
+  # Master Data Path (one row per labeled point)
+  data_path: !r here::here("1_data", "master_district_scatter.csv")
+
+  # Variables
+  x_var: "spending_index"    # numeric x-axis
+  y_var: "outcome_score"     # numeric y-axis
+  label_var: "district"      # point labels
+
+  # Where to split each axis: "median" (default), "mean", or a fixed number
+  x_split: "median"
+  y_split: "median"
+
+  # Quadrant captions (tr=top-right, tl=top-left, br=bottom-right, bl=bottom-left).
+  # Leave "" to omit a caption.
+  quadrant_label_tr: "High spend · High outcome"
+  quadrant_label_tl: "Efficient: low spend, high outcome"
+  quadrant_label_br: "Underperforming: high spend, low outcome"
+  quadrant_label_bl: "Low spend · Low outcome"
+
+  # Policy-Facing Labels
+  metric_name: "Spending vs Outcomes"
+
+  # --- Report Text (all editable; leave "" to use the smart default) ---
+  report_title: "Where Does the Money Work? Quadrant Scatter"
+  report_author: "Ibraheem Saqib Ellahi"
+  chart_title: ""
+  chart_subtitle: ""
+  x_label: ""
+  y_label: ""
+  source_note: "Generated via CERP Analytics Template"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = !isTRUE(params$combined_mode),
+  warning = FALSE,
+  message = FALSE,
+  dev.args = list(bg = "#FAF9F6"),
+  fig.path = paste0(here::here("4_output", "figures"), "/"),
+  fig.width = 9,
+  fig.height = 6.5,
+  fig.retina = 3
+)
+```
+
+```{r cerp-style, echo=FALSE, results='asis', eval=!isTRUE(params$combined_mode)}
+cat("<style>", readr::read_file(here::here("2_R", "cerp_style.css")), "</style>")
+```
+
+```{r load-and-prep}
+library(tidyverse)
+if (!requireNamespace("ggrepel", quietly = TRUE)) {
+  stop("The 'ggrepel' package is required for this template. ",
+       "Run renv::restore() from the project root, then re-render.", call. = FALSE)
+}
+library(ggrepel)
+
+source(here::here("2_R", "2.5_helpers.R"), local = TRUE)
+
+# Load data (headers/values whitespace-scrubbed) and validate YAML params.
+# All quadrant logic + plotting live in viz_scatter_quadrant().
+raw_data <- cerp_load(params$data_path)
+cerp_validate(raw_data, params[grepl("_var$", names(params))])
+```
+
+
+```{r plot-scatter}
+source(here::here("2_R", "2.0_setup_theme.R"), local = TRUE)
+source(here::here("2_R", "2.6_viz_functions.R"), local = TRUE)
+
+viz_scatter_quadrant(
+  data              = raw_data,
+  x_var             = params$x_var,
+  y_var             = params$y_var,
+  label_var         = params$label_var,
+  x_split           = params$x_split,
+  y_split           = params$y_split,
+  quadrant_label_tr = params$quadrant_label_tr,
+  quadrant_label_tl = params$quadrant_label_tl,
+  quadrant_label_br = params$quadrant_label_br,
+  quadrant_label_bl = params$quadrant_label_bl,
+  metric_name       = params$metric_name,
+  chart_title       = params$chart_title,
+  chart_subtitle    = params$chart_subtitle,
+  x_label           = params$x_label,
+  y_label           = params$y_label,
+  source_note       = params$source_note
+)
+```

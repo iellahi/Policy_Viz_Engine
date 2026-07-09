@@ -366,6 +366,57 @@ if (has("master_event_panel.csv")) {
               note = "no treated units; DiD is unidentified — must not draw a flat line")
 }
 
+# --- master_micro_survey.csv (phase-10 templates 3.20 / 3.21) -----------------
+if (has("master_micro_survey.csv")) {
+  ms10 <- loaded[["master_micro_survey.csv"]]
+
+  # 3.20 balance — a constant covariate: pooled SD collapses to 0.
+  add_variant("master_micro_survey.csv", "constant_covariate",
+              ms10 %>% mutate(baseline_score = 50),
+              expect = "eyeball", targets = "3.20",
+              note = "baseline_score constant; SMD guard should yield 0, not NaN")
+
+  # 3.21 summary table — a group with n = 1 (SD undefined for that group).
+  add_variant("master_micro_survey.csv", "group_n1",
+              ms10 %>% mutate(treatment_group = if_else(row_number() == 1,
+                                                        "Control", "Treatment")),
+              expect = "eyeball", targets = "3.21",
+              note = "Control group reduced to 1 row; sd() is NA — confirm no crash")
+}
+
+# --- master_sample_flow.csv (3.19 CONSORT) ------------------------------------
+if (has("master_sample_flow.csv")) {
+  sf10 <- loaded[["master_sample_flow.csv"]]
+
+  # 3.19 — stages listed out of their natural order (flow order = row order).
+  add_variant("master_sample_flow.csv", "stages_out_of_order",
+              sf10[nrow(sf10):1, , drop = FALSE],
+              expect = "eyeball", targets = "3.19",
+              note = "rows reversed; layout follows file order — confirm it still reads")
+}
+
+# --- master_district_scatter.csv (3.22 quadrant scatter) ----------------------
+if (has("master_district_scatter.csv")) {
+  ds10 <- loaded[["master_district_scatter.csv"]]
+
+  # 3.22 — a zero-variance axis: every y identical, so the median split degenerates.
+  add_variant("master_district_scatter.csv", "zero_variance_axis",
+              ds10 %>% mutate(outcome_score = 60),
+              expect = "eyeball", targets = "3.22",
+              note = "outcome_score constant; y-split degenerate — must not crash")
+}
+
+# --- master_time_to_event.csv (3.23 Kaplan-Meier) -----------------------------
+if (has("master_time_to_event.csv")) {
+  tte10 <- loaded[["master_time_to_event.csv"]]
+
+  # 3.23 — a group in which nobody has the event (all censored): curve stays at 1.
+  add_variant("master_time_to_event.csv", "all_censored",
+              tte10 %>% mutate(dropped = if_else(group == "Control", 0L, dropped)),
+              expect = "eyeball", targets = "3.23",
+              note = "Control all-censored; survfit should hold the curve at 100%")
+}
+
 # ------------------------------------------------------------------------------
 # 3. Write the manifest --------------------------------------------------------
 # ------------------------------------------------------------------------------

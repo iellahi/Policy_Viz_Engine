@@ -131,6 +131,39 @@ cerp_lump <- function(x, n = 8, other = "Other (smaller groups)") {
 }
 
 # ------------------------------------------------------------------------------
+# cerp_require_rows(): usable-row guard. Counts rows with non-missing values
+# across a template's ESSENTIAL columns and stops loudly if fewer than min_rows
+# remain — so empty files and all-NA columns fail with a clear message naming the
+# columns, instead of drawing a meaningless chart (silent-wrong, hard rule 4) or
+# throwing an opaque downstream error. Call it at the top of every viz_*()
+# function on the columns that chart cannot be built without. (Phase 4B
+# carry-forward, adopted early by the Phase-10 templates so they are born robust.)
+#
+#   data     the loaded data.frame.
+#   cols     character vector / list of the essential column names.
+#   min_rows minimum usable (complete-case over cols) rows required. Default 1.
+#   what     short label for the chart, used in the error message.
+# ------------------------------------------------------------------------------
+cerp_require_rows <- function(data, cols, min_rows = 1, what = "this visualization") {
+  cols <- unlist(cols, use.names = FALSE)
+  cols <- unique(cols[!is.na(cols) & nzchar(cols)])
+  present <- intersect(cols, names(data))
+  n_ok <- if (length(present) == 0) nrow(data) else sum(stats::complete.cases(data[present]))
+  if (n_ok < min_rows) {
+    stop(
+      str_to_sentence(what), " needs at least ", min_rows,
+      " row(s) with a value in ",
+      if (length(present) > 0) paste0("every one of: ", paste(present, collapse = ", "))
+      else "the required columns",
+      ", but only ", n_ok, " such row(s) were found.",
+      "\nCheck the data file and the column parameters in the YAML header.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+# ------------------------------------------------------------------------------
 # cerp_norm(): canonicalize a place name for matching. Strips whitespace,
 # common admin suffixes (District / Tehsil / Division / Capital Territory /
 # City), and punctuation, then title-cases. Used on BOTH sides of a spatial
