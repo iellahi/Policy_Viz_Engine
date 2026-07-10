@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CERP Visualization Suite — Combined Report — Gallery</title>
+<style>
+/* CERP report styling — injected into every template's HTML output.
+   GENERATED — edit theme_colors.yml and run 2.7_build_css.R.
+
+   This file is the HTML page chrome (page background, text, code boxes, links).
+   It is regenerated from 2_R/theme_colors.yml (the single source of truth for
+   brand color) by 2_R/2.7_build_css.R — do NOT edit it by hand; changes are
+   overwritten on the next build. Change a color in theme_colors.yml, then run
+   2.7_build_css.R. Fonts/layout stay fixed in the theme (design is centralized).
+   Design.md: Charter/Georgia body, Libre Franklin headings & captions. */
+
+body {
+  background-color: #FAF9F6;
+  color: #1b3a4b;
+  font-family: Charter, Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.main-container {
+  max-width: 880px;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
+  color: #1b3a4b;
+  font-weight: 600;
+}
+
+h1.title {
+  font-size: 1.85rem;
+  margin-bottom: 0.25rem;
+}
+
+h4.author, h4.date {
+  font-family: "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
+  color: #54707f;
+  font-size: 0.9rem;
+}
+
+pre, code {
+  background-color: #e8f4f5;
+  border: none;
+  border-radius: 4px;
+  color: #1b3a4b;
+}
+
+blockquote {
+  background-color: #e8f4f5;
+  border-left: 4px solid #457b9d;
+  color: #1b3a4b;
+  padding: 10px 16px;
+}
+
+a { color: #457b9d; }
+
+.btn-default, .btn {
+  font-family: "Libre Franklin", Arial, sans-serif;
+  font-size: 0.8rem;
+}
+
+img { background-color: #FAF9F6; }
+
+/* --- Phase 11 gallery-specific layout (index.html only) ------------------- */
+body { margin: 0; }
+.cerp-wrap { max-width: 1120px; margin: 0 auto; padding: 2.25rem 1.25rem 3.5rem; }
+.cerp-page-title { font-size: 1.9rem; margin: 0 0 .2rem; }
+.cerp-page-sub { color: #54707f; font-family: "Libre Franklin","Helvetica Neue",Arial,sans-serif; margin: 0 0 1.75rem; }
+.cerp-featured { display: grid; grid-template-columns: 240px 1fr; margin: 0 0 1.75rem; background: #fff; border: 1px solid #e5e1d8; border-radius: 12px; overflow: hidden; text-decoration: none; color: inherit; box-shadow: 0 4px 14px rgba(27,58,75,.08); transition: box-shadow .15s, transform .15s; }
+.cerp-featured:hover { box-shadow: 0 8px 22px rgba(27,58,75,.14); transform: translateY(-2px); }
+.cerp-featured-banner { min-height: 156px; }
+.cerp-featured-body { padding: 1.3rem 1.6rem; }
+.cerp-featured-title { font-size: 1.35rem; margin: .25rem 0 .4rem; }
+.cerp-featured-sub { color: #54707f; margin: 0 0 .6rem; font-family: "Libre Franklin",Arial,sans-serif; font-size: .95rem; }
+.cerp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 1.25rem; }
+.cerp-card { display: flex; flex-direction: column; text-decoration: none; color: inherit; background: #fff; border: 1px solid #e5e1d8; border-radius: 10px; overflow: hidden; transition: box-shadow .15s, transform .15s; }
+.cerp-card:hover { box-shadow: 0 6px 18px rgba(27,58,75,.12); transform: translateY(-2px); }
+.cerp-thumb { aspect-ratio: 16 / 10; background: #FAF9F6; display: flex; align-items: center; justify-content: center; overflow: hidden; border-bottom: 1px solid #eee; }
+.cerp-thumb img { width: 100%; height: 100%; object-fit: contain; background: #FAF9F6; }
+.cerp-ph { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; gap: .3rem; }
+.cerp-ph-id { font-family: "Libre Franklin",Arial,sans-serif; font-weight: 600; font-size: 1.5rem; letter-spacing: .02em; }
+.cerp-ph-tag { font-family: "Libre Franklin",Arial,sans-serif; text-transform: uppercase; letter-spacing: .12em; font-size: .68rem; opacity: .85; }
+.cerp-card-body { padding: .85rem 1rem 1.1rem; }
+.cerp-tid { font-family: "Libre Franklin",Arial,sans-serif; font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: #54707f; }
+.cerp-card-title { font-size: 1.02rem; margin: .22rem 0 .4rem; line-height: 1.25; }
+.cerp-fname { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .72rem; color: #8a9aa3; word-break: break-all; }
+@media (max-width: 560px) { .cerp-featured { grid-template-columns: 1fr; } .cerp-featured-banner { min-height: 96px; } }
+</style>
+</head>
+<body>
+<div class="cerp-wrap">
+<h1 class="cerp-page-title">CERP Visualization Suite — Combined Report</h1>
+<p class="cerp-page-sub">24 visuals — built 2026-07-10 14:02. Click any card to open the full report.</p>
+<a class="cerp-featured" href="3.00_cerp_combined_report.html"><div class="cerp-featured-banner" style="background:linear-gradient(135deg,#457b9d,#a8dadc)"></div><div class="cerp-featured-body"><span class="cerp-tid">Combined report</span><h2 class="cerp-featured-title">CERP Visualization Suite — Combined Report</h2><p class="cerp-featured-sub">24 visuals stitched under one house style.</p><span class="cerp-fname">3.00_cerp_combined_report.html</span></div></a><div class="cerp-grid">
+<a class="cerp-card" href="3.01_baseline_endline.html"><div class="cerp-thumb"><img src="figures/plot-dumbbell-1.png" alt="Program Impact: Dumbbell Plot" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.01</span><h3 class="cerp-card-title">Program Impact: Dumbbell Plot</h3><span class="cerp-fname">3.01_baseline_endline.Rmd</span></div></a>
+<a class="cerp-card" href="3.02_distribution_shifts.html"><div class="cerp-thumb"><img src="figures/plot-distribution-1.png" alt="Distribution Shifts: Density Plot" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.02</span><h3 class="cerp-card-title">Distribution Shifts: Density Plot</h3><span class="cerp-fname">3.02_distribution_shifts.Rmd</span></div></a>
+<a class="cerp-card" href="3.03_treatment_effects.html"><div class="cerp-thumb"><img src="figures/plot-effects-1.png" alt="Treatment Effects: Forest Plot" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.03</span><h3 class="cerp-card-title">Treatment Effects: Forest Plot</h3><span class="cerp-fname">3.03_treatment_effects.Rmd</span></div></a>
+<a class="cerp-card" href="3.04_subgroup_impacts.html"><div class="cerp-thumb"><img src="figures/plot-coefficient-1.png" alt="Subgroup Impacts: Coefficient Plot" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.04</span><h3 class="cerp-card-title">Subgroup Impacts: Coefficient Plot</h3><span class="cerp-fname">3.04_subgroup_impacts.Rmd</span></div></a>
+<a class="cerp-card" href="3.05_waffle_composition.html"><div class="cerp-thumb"><img src="figures/plot-waffle-1.png" alt="Composition Overview: Waffle Chart" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.05</span><h3 class="cerp-card-title">Composition Overview: Waffle Chart</h3><span class="cerp-fname">3.05_waffle_chart.Rmd</span></div></a>
+<a class="cerp-card" href="3.06_slopegraph.html"><div class="cerp-thumb"><img src="figures/plot-slopegraph-1.png" alt="Longitudinal Panel: Slopegraph" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.06</span><h3 class="cerp-card-title">Longitudinal Panel: Slopegraph</h3><span class="cerp-fname">3.06_slopegraph.Rmd</span></div></a>
+<a class="cerp-card" href="3.07_diverging_bar.html"><div class="cerp-thumb"><img src="figures/plot-diverging-1.png" alt="Survey Sentiment: Diverging Bar Chart" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.07</span><h3 class="cerp-card-title">Survey Sentiment: Diverging Bar Chart</h3><span class="cerp-fname">3.07_diverging_bar.Rmd</span></div></a>
+<a class="cerp-card" href="3.08_icon_array.html"><div class="cerp-thumb"><img src="figures/plot-icon-array-1.png" alt="Sample Attrition: Icon Array" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.08</span><h3 class="cerp-card-title">Sample Attrition: Icon Array</h3><span class="cerp-fname">3.08_icon_array.Rmd</span></div></a>
+<a class="cerp-card" href="3.09_waterfall_budget.html"><div class="cerp-thumb"><img src="figures/plot-waterfall-1.png" alt="Budget Pipeline: Waterfall Chart" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.09</span><h3 class="cerp-card-title">Budget Pipeline: Waterfall Chart</h3><span class="cerp-fname">3.09_waterfall_chart.Rmd</span></div></a>
+<a class="cerp-card" href="3.10_bump_chart.html"><div class="cerp-thumb"><img src="figures/plot-bump-1.png" alt="League Table: Bump Chart" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.10</span><h3 class="cerp-card-title">League Table: Bump Chart</h3><span class="cerp-fname">3.10_bump_chart.Rmd</span></div></a>
+<a class="cerp-card" href="3.11_bullet_chart.html"><div class="cerp-thumb"><img src="figures/plot-bullet-1.png" alt="Target Tracker: Bullet Chart" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.11</span><h3 class="cerp-card-title">Target Tracker: Bullet Chart</h3><span class="cerp-fname">3.11_bullet_chart.Rmd</span></div></a>
+<a class="cerp-card" href="3.12_deviation_bar.html"><div class="cerp-thumb"><img src="figures/plot-deviation-1.png" alt="Performance Outliers: Deviation Bar Chart" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.12</span><h3 class="cerp-card-title">Performance Outliers: Deviation Bar Chart</h3><span class="cerp-fname">3.12_deviation_bar.Rmd</span></div></a>
+<a class="cerp-card" href="3.13_ridgeline.html"><div class="cerp-thumb"><img src="figures/plot-ridgeline-1.png" alt="Distribution Landscape: Ridgeline Plot" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.13</span><h3 class="cerp-card-title">Distribution Landscape: Ridgeline Plot</h3><span class="cerp-fname">3.13_ridgeline_plot.Rmd</span></div></a>
+<a class="cerp-card" href="3.14_calendar_heatmap.html"><div class="cerp-thumb"><img src="figures/plot-heatmap-1.png" alt="High-Frequency Tracker: Calendar Heatmap" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.14</span><h3 class="cerp-card-title">High-Frequency Tracker: Calendar Heatmap</h3><span class="cerp-fname">3.14_calendar_heatmap.Rmd</span></div></a>
+<a class="cerp-card" href="3.15_choropleth_demo.html"><div class="cerp-thumb"><img src="figures/plot-choropleth-1.png" alt="District Map (Demo): Choropleth" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.15</span><h3 class="cerp-card-title">District Map (Demo): Choropleth</h3><span class="cerp-fname">3.15_choropleth_map.Rmd</span></div></a>
+<a class="cerp-card" href="3.15_choropleth_pk.html"><div class="cerp-thumb"><img src="figures/plot-choropleth-1.png" alt="Pakistan Districts: Choropleth" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.15</span><h3 class="cerp-card-title">Pakistan Districts: Choropleth</h3><span class="cerp-fname">3.15_choropleth_map.Rmd</span></div></a>
+<a class="cerp-card" href="3.16_event_study.html"><div class="cerp-thumb"><img src="figures/plot-event-study-1.png" alt="Dynamic Impact: Event-Study Plot" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.16</span><h3 class="cerp-card-title">Dynamic Impact: Event-Study Plot</h3><span class="cerp-fname">3.16_event_study.Rmd</span></div></a>
+<a class="cerp-card" href="3.17_small_multiples.html"><div class="cerp-thumb"><img src="figures/plot-small-multiples-1.png" alt="District Trends: Small Multiples" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.17</span><h3 class="cerp-card-title">District Trends: Small Multiples</h3><span class="cerp-fname">3.17_small_multiples.Rmd</span></div></a>
+<a class="cerp-card" href="3.18_heatmap_matrix.html"><div class="cerp-thumb"><img src="figures/plot-heatmap-matrix-1.png" alt="District × Year: Heatmap Matrix" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.18</span><h3 class="cerp-card-title">District × Year: Heatmap Matrix</h3><span class="cerp-fname">3.18_heatmap_matrix.Rmd</span></div></a>
+<a class="cerp-card" href="3.19_consort_flow.html"><div class="cerp-thumb"><img src="figures/plot-consort-1.png" alt="Trial Profile: CONSORT Flow Diagram" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.19</span><h3 class="cerp-card-title">Trial Profile: CONSORT Flow Diagram</h3><span class="cerp-fname">3.19_consort_flow.Rmd</span></div></a>
+<a class="cerp-card" href="3.20_balance_plot.html"><div class="cerp-thumb"><img src="figures/plot-balance-1.png" alt="Randomization Check: Covariate Balance (Love Plot)" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.20</span><h3 class="cerp-card-title">Randomization Check: Covariate Balance (Love Plot)</h3><span class="cerp-fname">3.20_balance_plot.Rmd</span></div></a>
+<a class="cerp-card" href="3.21_summary_table.html"><div class="cerp-thumb"><div class="cerp-ph" style="background:#457b9d"><span class="cerp-ph-id">3.21</span><span class="cerp-ph-tag">table</span></div></div><div class="cerp-card-body"><span class="cerp-tid">3.21</span><h3 class="cerp-card-title">Table 1: Grouped Summary Statistics</h3><span class="cerp-fname">3.21_summary_table.Rmd</span></div></a>
+<a class="cerp-card" href="3.22_scatter_quadrant.html"><div class="cerp-thumb"><img src="figures/plot-scatter-1.png" alt="Where Does the Money Work? Quadrant Scatter" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.22</span><h3 class="cerp-card-title">Where Does the Money Work? Quadrant Scatter</h3><span class="cerp-fname">3.22_scatter_quadrant.Rmd</span></div></a>
+<a class="cerp-card" href="3.23_survival_curve.html"><div class="cerp-thumb"><img src="figures/plot-survival-1.png" alt="Who Stays Enrolled? Kaplan-Meier Survival Curve" loading="lazy" onerror="this.style.display='none'"></div><div class="cerp-card-body"><span class="cerp-tid">3.23</span><h3 class="cerp-card-title">Who Stays Enrolled? Kaplan-Meier Survival Curve</h3><span class="cerp-fname">3.23_survival_curve.Rmd</span></div></a>
+</div>
+</div>
+</body>
+</html>

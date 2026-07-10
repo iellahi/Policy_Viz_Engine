@@ -5,104 +5,54 @@ into policy-ready **HTML** reports without requiring the user to write any R cod
 You edit one config file (`render_config.yml`); the engine renders every visual and,
 optionally, stitches selected ones into a single combined report.
 
+**▶ [Browse the live demo gallery](https://iellahi.github.io/Cerp_Viz_Repo/)** —
+every template rendered against the synthetic demo data; click any card to open
+the full report.
+
 ## Repository Architecture
 
-* **/1_data** — **The Drop Zone:** Place raw `.csv` or `.xlsx` files here. Only the
+* **/1_data** — **The Drop Zone:** place raw `.csv` or `.xlsx` files here. Only the
   synthetic `master_*.csv` demo data and `geo/` are tracked in git; all other field
   data is gitignored and never leaves the machine.
 * **/2_R** — **The Engine Room:** setup theme (`2.0_setup_theme.R`), brand palette
   (`theme_colors.yml`), Excel→CSV converter (`2.3_excel_to_csv.R`), shared helpers
   (`2.5_helpers.R`), **all chart logic as `viz_*()` functions** (`2.6_viz_functions.R`),
   the config-driven production render (`2.2_master_knit.R`), the testing render
-  (`2.4_test_knit.R`), and the CSS generator (`2.7_build_css.R`).
+  (`2.4_test_knit.R`), the CSS generator (`2.7_build_css.R`), the gallery builder
+  (`2.8_build_index.R`), and the guarded gallery publisher (`2.9_publish_docs.R`).
 * **/3_templates** — **The Factory:** 23 parameterized `.Rmd` templates (3.01–3.23),
-  one visualization each, plus the combined-report parent (`3.00_combined_report.Rmd`).
-  Each template is a thin wrapper: it loads and validates the data, then calls its
-  `viz_*()` function from `2_R/2.6_viz_functions.R` (chart code lives there, never in
-  the Rmd). You never edit these — you point them at data and set labels via
-  `render_config.yml`.
-* **/3_templates_testing** — the same template bodies pointed at messy real data, for
-  stress-testing. Rendered by `2.4_test_knit.R`.
+  one visualization each, plus the combined-report parent (`3.00_combined_report.Rmd`)
+  and the pre-flight QA report (`0.00_data_quality_report.Rmd`). Each template is a
+  thin wrapper around its `viz_*()` function — you never edit these; you point them
+  at data via `render_config.yml`.
+* **/3_templates_testing** — the same template bodies pointed at messy real data,
+  for stress-testing. Rendered by `2.4_test_knit.R`.
 * **/4_output** — **The Deliverables:** generated HTML reports and figures, plus
-  `index.html` — a static gallery (thumbnail card per report) built automatically at
-  the end of every production knit. Open it first to browse everything rendered.
-* **/5_tests** — **The Safety Net:** `snapshot.R`, a golden-figure regression test that
-  hashes every rendered figure so a refactor can be proven to change no pixels. See
-  `5_tests/README.md`.
+  `index.html` — a static gallery rebuilt at the end of every production knit.
+  Open it first to browse everything rendered. Gitignored (regenerated locally).
+* **/5_tests** — **The Safety Net:** golden-figure regression test (`snapshot.R`)
+  and the stress-test suite. See `5_tests/README.md`.
+* **/docs** — the published copy of the demo gallery, served by GitHub Pages.
+  Written only by `2_R/2.9_publish_docs.R` — never by hand (see
+  [Publishing the gallery](#publishing-the-gallery)).
 
-## Prerequisites & Setup
+## Setup & Replication
 
-1. Install **R** and **RStudio**.
-2. Download the repository and **always open `cerp_viz_repo.Rproj` first** so paths
-   resolve from the project root (every script uses `here::here()`).
-3. Restore the reproducible package environment from the R console:
-   ```r
-   renv::restore()
-   ```
-   `renv` owns the environment. Templates **never** install packages at render time —
-   a missing package fails loudly and tells you to run `renv::restore()`. Output is
-   HTML; no LaTeX/tinytex is required.
-
-## Reproducing on another computer
-
-Clone the repo:
-
-```bash
-git clone https://github.com/iellahi/Cerp_Viz_Repo.git
-cd Cerp_Viz_Repo
-```
-
-Then, in RStudio:
-
-1. Open **`cerp_viz_repo.Rproj`** — this runs `.Rprofile`, which auto-activates `renv`
-   (bootstrapping it if absent) and sets the project root for all `here::here()` paths.
-2. In the R console, restore the exact package versions from `renv.lock`:
-   ```r
-   renv::restore()
-   ```
-3. Render everything:
-   ```r
-   source(here::here("2_R", "2.2_master_knit.R"))
-   ```
-   The configured reports + the combined report land in `4_output/`.
-
-### What the machine needs
-
-- **R (matching version).** `renv.lock` pins **R 4.4.1**; a nearby 4.4.x is normally
-  fine. `renv/library/` is **not** in git, so packages come from `renv::restore()`.
-- **Fonts (for faithful output).** The house style uses **Charter** (body, falls back
-  to Georgia → generic serif) and **Libre Franklin** (titles/captions, falls back to
-  Franklin Gothic Medium → generic sans). Renders succeed without them, but install
-  both system-wide to reproduce the intended look. Font rasterization differs across
-  machines, so figures will not be *pixel*-identical to another computer's.
-- **System libraries for `sf`** (only the 3.15 choropleth): **GDAL, GEOS, PROJ** at the
-  OS level — `brew install gdal geos proj` (macOS) or `libgdal-dev libgeos-dev
-  libproj-dev` (Debian/Ubuntu). If `2.2_master_knit.R` errors *only* on the choropleth
-  entries, this is why. Every other template is pure R.
-
-What travels in git: the code, `renv.lock`, the synthetic `master_*.csv` demo data, the
-spatial assets under `1_data/geo/`, and the test manifest in `5_tests/`. What does
-**not**: installed packages (`renv/library/`), any field data in `1_data/`, and
-everything generated in `4_output/`.
-
-## Regression tests (`5_tests`)
-
-`5_tests/snapshot.R` proves a refactor changed no pixels: it renders the full production
-suite and SHA-256-hashes every figure in `4_output/figures/`, comparing against the
-golden manifest `5_tests/snapshots/manifest.csv` (tracked in git). Run it with:
+Full plain-language instructions — install R/RStudio, clone, restore packages,
+render — live in **[REPLICATION.md](REPLICATION.md)**, together with the known
+issues and their fixes (build tools, `sf` system libraries, fonts, pandoc).
+The short version:
 
 ```r
-source(here::here("5_tests", "snapshot.R"))
+# after opening cerp_viz_repo.Rproj in RStudio:
+renv::restore()                                   # once per machine
+source(here::here("2_R", "2.2_master_knit.R"))    # render everything
 ```
 
-- With `manifest.csv` present (it is committed), this runs in **compare** mode and
-  reports `0 mismatches ...` when nothing changed, or lists any figure whose hash moved.
-- With `manifest.csv` absent, it runs in **record** mode and writes a fresh baseline.
-
-**On a different computer, re-baseline first.** Figure hashes depend on the local font
-rasterizer, so the committed manifest will not match another machine. Delete
-`5_tests/snapshots/manifest.csv`, run the line above once to record a new baseline, then
-use compare runs after that. Full details: `5_tests/README.md`.
+`renv` owns the package environment. Templates **never** install packages at
+render time — a missing package fails loudly and tells you to run
+`renv::restore()`. Output is HTML; no LaTeX is required. **Always open
+`cerp_viz_repo.Rproj` first** so paths resolve from the project root.
 
 ## Quick Start
 
@@ -117,14 +67,11 @@ use compare runs after that. Full details: `5_tests/README.md`.
    * Set `enabled: false` to skip an entry without deleting it.
    * The `combined:` block stitches selected `id`s (in the order listed under
      `include:`) into one self-contained HTML report.
-3. **Generate:** open `2_R/2.2_master_knit.R` and click **Source** (or run
-   `source(here::here("2_R", "2.2_master_knit.R"))`). The engine validates the whole
-   config up front, renders each enabled entry (one failure never stops the batch),
-   then builds the combined report. Collect everything from `/4_output`.
-4. **Browse:** open `4_output/index.html` — a static gallery with one thumbnail card
-   per rendered report (first figure PNG; a palette placeholder tile for table-only
-   outputs like 3.21) plus a featured card for the combined report. It's rebuilt on
-   every knit, opens straight from disk, and needs no server or extra dependencies.
+3. **Generate:** `source(here::here("2_R", "2.2_master_knit.R"))`. The engine
+   validates the whole config up front, renders each enabled entry (one failure
+   never stops the batch), builds the combined report, then rebuilds the gallery.
+4. **Browse:** open `4_output/index.html` — one thumbnail card per rendered report
+   plus a featured card for the combined report. Opens straight from disk.
 
 Column names in `*_var` params are validated against the actual data on load: a typo
 produces a clear error naming the missing column and the closest match, not a
@@ -132,9 +79,8 @@ silently-wrong chart.
 
 ## Pre-flight Data Quality Report (`0.00`)
 
-Before picking a visual, profile a freshly dropped CSV with the pre-flight QA report.
-It is **per-dataset, not per-config** — deliberately *not* part of `2.2_master_knit.R` —
-so render it on its own from the R console (project root):
+Before picking a visual, profile a freshly dropped CSV. It is **per-dataset, not
+per-config** — deliberately *not* part of the master knit — so render it on its own:
 
 ```r
 rmarkdown::render(
@@ -144,13 +90,12 @@ rmarkdown::render(
 )
 ```
 
-Point `data_path` at any CSV in `1_data/`. The report shows dataset dimensions and
-duplicate/empty/single-row flags, a per-column profile (detected type, missingness,
-distinct count, stray whitespace, date-parse rate, 1.5×IQR outliers), a missingness
-chart, house-style per-column issue callouts, and a **deterministic template
-recommender** — a ranked list of which templates (3.01–3.23) the data can feed and which
-column maps to which `*_var` param. It only describes; it never changes your data. Field
-data stays local (`4_output/` and `3_templates/*.html` are gitignored; nothing calls an API).
+The report shows dataset dimensions and duplicate/empty/single-row flags, a
+per-column profile (detected type, missingness, distinct count, stray whitespace,
+date-parse rate, outliers), per-column issue callouts, and a **deterministic
+template recommender** — a ranked list of which templates the data can feed and
+which column maps to which `*_var` param. It only describes; it never changes your
+data, and nothing calls an external API.
 
 ## Template Dictionary
 
@@ -175,9 +120,8 @@ Choose the right template for your policy narrative (set it as `template:` in th
 * **3.16 Event-Study Plot** — dynamic treatment effects around an event time (`fixest`).
 * **3.17 Small Multiples** — one small faceted panel per unit for at-a-glance comparison.
 * **3.18 Heatmap Matrix** — a row × column value grid (e.g. district × year).
-* **3.19 CONSORT Flow Diagram** — participant flow through trial stages (enrolled →
-  randomized → allocated → followed up → analyzed), with per-arm columns and
-  exclusion/attrition notes. Pure ggplot boxes + arrows (no DiagrammeR).
+* **3.19 CONSORT Flow Diagram** — participant flow through trial stages, with per-arm
+  columns and exclusion/attrition notes. Pure ggplot boxes + arrows (no DiagrammeR).
 * **3.20 Covariate Balance (Love Plot)** — standardized mean differences between
   treatment and control across covariates, with |SMD| threshold lines.
 * **3.21 Summary Table (Table 1)** — grouped summary statistics via `gt`: numeric →
@@ -194,19 +138,43 @@ Choose the right template for your policy narrative (set it as `template:` in th
 
 All brand colors live in one file: **`2_R/theme_colors.yml`**. Edit a hex there and
 every chart across all 23 templates updates on the next render — you never touch R code.
-The five colors that also style the HTML page chrome (`bg`, `text`, `box`, `subtle`,
-`primary`) drive `2_R/cerp_style.css`, which is **generated** from the palette: after
-changing one of those, run `source(here::here("2_R", "2.7_build_css.R"))` once to
-regenerate the CSS, then re-knit. Full instructions and how to revert: see
-[CHANGING_COLORS.md](CHANGING_COLORS.md).
+The five colors that also style the HTML page chrome drive `2_R/cerp_style.css`, which
+is **generated** from the palette: after changing one of those, run
+`source(here::here("2_R", "2.7_build_css.R"))` once, then re-knit. Full instructions
+and how to revert: [CHANGING_COLORS.md](CHANGING_COLORS.md).
+
+## Publishing the gallery
+
+The [live gallery](https://iellahi.github.io/Cerp_Viz_Repo/) is a copy of the demo
+render served by GitHub Pages from `/docs`. To refresh it after a change,
+run a full master knit, then:
+
+```r
+source(here::here("2_R", "2.9_publish_docs.R"))
+```
+
+then commit and push the `docs/` folder. The script is **guarded**: it aborts
+unless every enabled config entry reads synthetic `master_*.csv` data, copies only
+the files the gallery references (stale or testing renders in `4_output/` are
+never picked up), and verifies figure hashes against the golden manifest where
+covered. Field data can never reach the public site through it.
+
+## Regression tests (`5_tests`)
+
+`5_tests/snapshot.R` proves a refactor changed no pixels: it re-renders the suite
+and compares a SHA-256 hash of every figure against the golden manifest
+(`5_tests/snapshots/manifest.csv`, tracked). Hashes are machine-specific (font
+rasterization), so on a new computer delete the manifest and record a fresh
+baseline first. Details: `5_tests/README.md`.
 
 ## Troubleshooting
 
-* **A template fails during render.** Read the error — it usually names the exact
-  column or parameter at fault. Check that your `*_var` names in `render_config.yml`
-  match your data headers (case-sensitive) and that key columns aren't all `NA`.
-* **"Missing package … run `renv::restore()`".** The environment is out of sync with
-  `renv.lock`; run `renv::restore()` from the project root, then re-render.
+* **Setup or package problems** (restore fails, maps fail, fonts, pandoc): see the
+  fixes in [REPLICATION.md](REPLICATION.md).
+* **A template fails during render.** Read the error — it names the exact column or
+  parameter at fault. Check that your `*_var` names in `render_config.yml` match
+  your data headers (case-sensitive) and that key columns aren't all `NA`.
 * **Testing vs. production outputs.** `2.4_test_knit.R` writes to the same `/4_output`
-  folder and shares filenames with production (e.g. `3.06_slopegraph.html`); a testing
-  render overwrites the production HTML of the same id, and vice versa.
+  folder and can overwrite production HTML and figures of the same name (and vice
+  versa). Re-run the production knit before trusting `4_output/` — and always
+  before publishing the gallery.
