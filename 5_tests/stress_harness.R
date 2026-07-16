@@ -73,7 +73,10 @@ clean_phrases <- c(
   "Multiple rows share the same", "Unknown aggregate option",
   "No rows remain after filtering", "is not present in", "Available event times",
   "is not a field in the geometry", "Data file not found", "Geometry file not found",
-  "Run renv::restore", "is required for", "Fields available"
+  "Run renv::restore", "is required for", "Fields available",
+  # 4B additions: cerp_require_rows() guard + the new template-specific stops
+  "row(s) with a value in", "needs BOTH", "one row per stage",
+  "no treatment effect can be computed"
 )
 
 is_clean_message <- function(msg, tokens) {

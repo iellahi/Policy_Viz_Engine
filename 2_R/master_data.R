@@ -133,8 +133,19 @@ real_names <- NULL
 if (requireNamespace("sf", quietly = TRUE) && file.exists(adm2_path)) {
   real_names <- sort(unique(as.character(sf::st_read(adm2_path, quiet = TRUE)$district)))
 }
+# --- RNG isolation (5B) -------------------------------------------------------
+# This dataset's draw count depends on which branch runs (real file: sample +
+# runif(40); fallback: runif(29)), and every dataset BELOW reads the same
+# global RNG stream seeded once at the top. Without isolation, swapping the
+# boundary file would silently regenerate every downstream master_*.csv and
+# break their golden snapshots. So: snapshot the stream, use a dataset-local
+# seed, then restore the stream and replay the exact draws the pre-5B code
+# consumed here (runif(29), the fallback branch that shipped) — datasets 7+
+# stay byte-identical whichever branch runs.
+.ds6_seed_state <- .Random.seed
+set.seed(516)
 if (!is.null(real_names) && length(real_names) > 40) {
-  picked <- sample(real_names, 40)
+  picked <- sort(sample(real_names, 40))
   adm2_indicators <- tibble(district = picked,
                             literacy_rate = round(runif(length(picked), 45, 85)))
 } else {
@@ -149,6 +160,10 @@ if (!is.null(real_names) && length(real_names) > 40) {
   )
 }
 write_csv(adm2_indicators, here::here("1_data", "master_district_indicators_pk.csv"))
+.Random.seed <- .ds6_seed_state   # restore the pre-dataset-6 stream…
+invisible(runif(29))              # …and replay the historical fallback draws so
+rm(.ds6_seed_state)               # datasets 7+ see exactly the stream they always did.
+# --- end RNG isolation (5B) ---------------------------------------------------
 
 # ==============================================================================
 # DATASET 7: Event-Study Panel (3.16)

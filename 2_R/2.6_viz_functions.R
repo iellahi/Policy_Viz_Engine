@@ -29,6 +29,10 @@ viz_dumbbell <- function(data,
                          chart_title = "", chart_subtitle = "",
                          x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(group_var, before_var, after_var),
+                    what = "the dumbbell chart")
+
   plot_data <- data %>%
     # 1. Safely drop NAs only in the columns essential for this visualization
     drop_na(!!sym(group_var), !!sym(before_var), !!sym(after_var)) %>%
@@ -42,14 +46,20 @@ viz_dumbbell <- function(data,
       Group = case_when(
         str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes") ~ str_wrap(treatment_label, width = 15),
         TRUE ~ str_wrap(control_label, width = 15)
-      )
+      ),
+
+      # 4B: coerce via cerp_numeric() so numbers-as-text ("1,200", "45%", "N/A")
+      # parse where possible and WARN with a count where not — never a silent
+      # NaN. No-op on already-numeric columns.
+      Before_Num = cerp_numeric(!!sym(before_var), before_var),
+      After_Num  = cerp_numeric(!!sym(after_var), after_var)
     ) %>%
 
     # 3. Efficiently calculate means grouped by our clean labels
     group_by(Group) %>%
     summarize(
-      Before = mean(!!sym(before_var), na.rm = TRUE),
-      After  = mean(!!sym(after_var), na.rm = TRUE),
+      Before = mean(Before_Num, na.rm = TRUE),
+      After  = mean(After_Num, na.rm = TRUE),
       .groups  = "drop"
     ) %>%
 
@@ -111,6 +121,10 @@ viz_distribution <- function(data,
                              group1_label, group2_label, metric_name,
                              chart_title = "", chart_subtitle = "",
                              x_label = "", source_note = "") {
+
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(outcome_var, group_var),
+                    what = "the distribution plot")
 
   plot_data <- data %>%
     # 1. Safely drop NAs only for the required variables
@@ -184,6 +198,10 @@ viz_forest <- function(data,
                        chart_title = "", chart_subtitle = "",
                        x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(outcome_var, group_var),
+                    what = "the forest plot")
+
   plot_data <- data %>%
     # 1. Safely drop NAs only for the required variables
     drop_na(!!sym(outcome_var), !!sym(group_var)) %>%
@@ -196,14 +214,17 @@ viz_forest <- function(data,
       Group = case_when(
         str_detect(Clean_Group, "(?i)Treat|Intervention|1|Yes|Received") ~ str_wrap(treatment_label, width = 20),
         TRUE ~ str_wrap(control_label, width = 20)
-      )
+      ),
+
+      # 4B: numbers-as-text parse-or-warn via cerp_numeric (no-op on numeric)
+      Outcome = cerp_numeric(!!sym(outcome_var), outcome_var)
     ) %>%
 
     # 3. Group data to calculate statistics efficiently
     group_by(Group) %>%
     summarize(
-      Estimate = mean(!!sym(outcome_var), na.rm = TRUE),
-      SD = sd(!!sym(outcome_var), na.rm = TRUE),
+      Estimate = mean(Outcome, na.rm = TRUE),
+      SD = sd(Outcome, na.rm = TRUE),
       N = n(),
       .groups = "drop"
     ) %>%
@@ -267,7 +288,11 @@ viz_coefficient <- function(data,
                             chart_title = "", chart_subtitle = "",
                             x_label = "", y_label = "", source_note = "") {
 
-  plot_data <- data %>%
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(outcome_var, group_var, subgroup_var),
+                    what = "the subgroup coefficient plot")
+
+  prepped <- data %>%
     # 1. Safely drop NAs only for the specific variables used in this plot
     drop_na(!!sym(outcome_var), !!sym(group_var), !!sym(subgroup_var)) %>%
 
@@ -279,14 +304,29 @@ viz_coefficient <- function(data,
         TRUE ~ "CTRL"
       ),
       # Clean up the subgroup categories (e.g., standardizing "low", "Low ", "LOW")
-      Subgroup = str_to_title(str_trim(as.character(!!sym(subgroup_var))))
-    ) %>%
+      Subgroup = str_to_title(str_trim(as.character(!!sym(subgroup_var)))),
 
+      # 4B: numbers-as-text parse-or-warn via cerp_numeric (no-op on numeric)
+      Outcome = cerp_numeric(!!sym(outcome_var), outcome_var)
+    )
+
+  # 4B fix: an ATE (Treatment − Control) is undefined without BOTH arms —
+  # pivot_wider would otherwise die with an opaque "'Mean_TREAT' not found".
+  if (!all(c("TREAT", "CTRL") %in% unique(prepped$Internal_Group))) {
+    stop(
+      "The subgroup coefficient plot needs BOTH a treatment and a control arm ",
+      "in '", group_var, "', but only one was found after coercion. ",
+      "Check the values of that column in the data file.",
+      call. = FALSE
+    )
+  }
+
+  plot_data <- prepped %>%
     # 3. Calculate Mean, Variance, and Count per Subgroup & Treatment Arm
     group_by(Subgroup, Internal_Group) %>%
     summarize(
-      Mean = mean(!!sym(outcome_var), na.rm = TRUE),
-      Var = var(!!sym(outcome_var), na.rm = TRUE),
+      Mean = mean(Outcome, na.rm = TRUE),
+      Var = var(Outcome, na.rm = TRUE),
       N = n(),
       .groups = "drop"
     ) %>%
@@ -303,8 +343,27 @@ viz_coefficient <- function(data,
       # Standard Error of the difference between two means
       SE = sqrt((Var_TREAT / N_TREAT) + (Var_CTRL / N_CTRL)),
       Lower_CI = ATE - (1.96 * SE),
-      Upper_CI = ATE + (1.96 * SE),
+      Upper_CI = ATE + (1.96 * SE)
+    )
 
+  # 4B fix: a subgroup present in only one arm has an undefined ATE (NA), which
+  # previously broke fct_reorder downstream. Drop such subgroups with a visible
+  # warning; stop if nothing remains.
+  n_na_ate <- sum(is.na(plot_data$ATE))
+  if (n_na_ate > 0) {
+    warning(n_na_ate, " subgroup(s) in '", subgroup_var,
+            "' have rows in only one arm; their treatment effect is undefined ",
+            "and they were dropped from the plot.", call. = FALSE)
+    plot_data <- plot_data %>% filter(!is.na(ATE))
+  }
+  if (nrow(plot_data) == 0) {
+    stop("No subgroup in '", subgroup_var, "' has rows in both a treatment ",
+         "and a control arm, so no treatment effect can be computed.",
+         call. = FALSE)
+  }
+
+  plot_data <- plot_data %>%
+    mutate(
       # Check if the effect is statistically significant (CI doesn't cross zero)
       Is_Sig = ifelse(Lower_CI > 0 | Upper_CI < 0, "Significant", "Not Significant"),
 
@@ -359,6 +418,9 @@ viz_coefficient <- function(data,
 viz_waffle <- function(data,
                        status_var, category_order, metric_name,
                        chart_title = "", chart_subtitle = "", source_note = "") {
+
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, status_var, what = "the waffle chart")
 
   # 1. Count each category of the status variable
   cat_counts <- data %>%
@@ -458,6 +520,10 @@ viz_slopegraph <- function(data,
                            chart_title = "", chart_subtitle = "",
                            x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(entity_var, time_var, value_var),
+                    what = "the slopegraph")
+
   # Define string parameters OUTSIDE the mutate chain to prevent vector duplication
   start_str <- as.character(start_time)
   end_str <- as.character(end_time)
@@ -473,7 +539,8 @@ viz_slopegraph <- function(data,
     # 3. Scrub and wrap Entity names
     mutate(
       Entity = str_wrap(str_to_title(str_trim(as.character(!!sym(entity_var)))), width = 15),
-      Value = as.numeric(!!sym(value_var)),
+      # 4B: numbers-as-text parse-or-warn via cerp_numeric (no-op on numeric)
+      Value = cerp_numeric(!!sym(value_var), value_var),
       # Lock factor levels so start time is ALWAYS on the left
       Time = factor(Time_Raw, levels = c(start_str, end_str))
     )
@@ -549,7 +616,11 @@ viz_diverging <- function(data,
                           chart_title = "", chart_subtitle = "",
                           x_label = "", y_label = "", source_note = "") {
 
-  plot_data <- data %>%
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(entity_var, response_var),
+                    what = "the diverging bar chart")
+
+  mapped <- data %>%
     # 1. Safely drop NAs only for required variables
     drop_na(!!sym(entity_var), !!sym(response_var)) %>%
 
@@ -566,8 +637,18 @@ viz_diverging <- function(data,
         str_detect(Clean_Resp, "(?i)Ag") & !str_detect(Clean_Resp, "(?i)Strongly") ~ "Agree",
         TRUE ~ NA_character_ # Flag unrecognizable garbage data as NA
       )
-    ) %>%
+    )
 
+  # 4B: the fixed 4-point mapping silently drops anything it cannot place
+  # (Neutral, "Somewhat ...", garbage). Make the reduction visible with a count.
+  n_unmapped <- sum(is.na(mapped$Response))
+  if (n_unmapped > 0) {
+    warning(n_unmapped, " '", response_var, "' response(s) did not match the ",
+            "4-point Agree/Disagree scale and were dropped from the chart.",
+            call. = FALSE)
+  }
+
+  plot_data <- mapped %>%
     # Drop any garbage data that couldn't be mapped to our 4 categories
     drop_na(Response) %>%
 
@@ -643,6 +724,9 @@ viz_diverging <- function(data,
 viz_icon_array <- function(data,
                            category_var, scale_factor, unit_name, metric_name,
                            chart_title = "", chart_subtitle = "", source_note = "") {
+
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, category_var, what = "the icon array")
 
   # 1. Calculate the raw counts directly from the microdata
   array_data <- data %>%
@@ -732,6 +816,10 @@ viz_waterfall <- function(data,
                           chart_title = "", chart_subtitle = "",
                           x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(category_var, value_var),
+                    what = "the waterfall chart")
+
   # 1. Standardize the data and drop NAs
   clean_data <- data %>%
     drop_na(!!sym(category_var), !!sym(value_var)) %>%
@@ -739,6 +827,17 @@ viz_waterfall <- function(data,
       Category = str_wrap(str_to_title(str_trim(as.character(!!sym(category_var)))), width = 15),
       Value = as.numeric(!!sym(value_var))
     )
+
+  # 4B fix: duplicate stage names crash the factor(levels = Category) step —
+  # and silently summing them would hide a data problem (hard rule 4). A
+  # waterfall needs exactly one row per stage, so stop loudly.
+  dup_stages <- unique(clean_data$Category[duplicated(clean_data$Category)])
+  if (length(dup_stages) > 0) {
+    stop("Duplicate '", category_var, "' stage name(s) in the data: ",
+         paste(gsub("\n", " ", dup_stages), collapse = ", "),
+         ". A waterfall needs exactly one row per stage — aggregate or rename ",
+         "the duplicates in the data file.", call. = FALSE)
+  }
 
   # 2. Intelligent Summary Detection
   # Checks if the user already included the final total in the CSV.
@@ -751,6 +850,17 @@ viz_waterfall <- function(data,
     if (round(abs(sum_previous)) == round(abs(last_val))) {
       clean_data <- clean_data[1:(n_rows-1), ]
     }
+  }
+
+  # 4B fix: if a row already carries the final column's name but was NOT
+  # stripped above (its value doesn't reconcile with the stage sum), appending
+  # the computed final row would duplicate it and crash the factor step.
+  if (str_wrap(str_to_title(str_trim(final_column_name)), width = 15)
+      %in% clean_data$Category) {
+    stop("The data already contains a '", final_column_name, "' row in '",
+         category_var, "' whose value does not equal the sum of the other ",
+         "stages. Fix or remove that total row in the data file.",
+         call. = FALSE)
   }
 
   # 3. Calculate the true final landing total
@@ -845,17 +955,23 @@ viz_bump <- function(data,
                      chart_title = "", chart_subtitle = "",
                      x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(entity_var, time_var, value_var),
+                    what = "the bump chart")
+
   plot_data <- data %>%
     # 1. Safely drop NAs only for the specific variables required
     drop_na(!!sym(time_var), !!sym(entity_var), !!sym(value_var)) %>%
 
     # 2. Scrub and wrap Entity names, and force Time/Value to numeric types
+    # (4B: parse-or-warn via cerp_numeric; no-op on already-numeric columns)
     mutate(
       Entity_Clean = str_to_title(str_trim(as.character(!!sym(entity_var)))),
       Entity = str_wrap(Entity_Clean, width = 15),
-      Time = as.numeric(!!sym(time_var)),
-      Value = as.numeric(!!sym(value_var))
+      Time = cerp_numeric(!!sym(time_var), time_var),
+      Value = cerp_numeric(!!sym(value_var), value_var)
     ) %>%
+    drop_na(Time, Value) %>%
 
     # 3. Group by year to establish who is in 1st, 2nd, 3rd place, etc.
     group_by(Time) %>%
@@ -954,6 +1070,10 @@ viz_bullet <- function(data,
                        chart_title = "", chart_subtitle = "",
                        x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(entity_var, time_var, value_var, target_var),
+                    what = "the bullet chart")
+
   # Define string parameters OUTSIDE the mutate chain to prevent vector duplication
   filter_str <- as.character(filter_time)
 
@@ -966,10 +1086,11 @@ viz_bullet <- function(data,
     filter(Time_Raw == filter_str) %>%
 
     # 3. Scrub labels and force strict numeric types for chart math
+    # (4B: parse-or-warn via cerp_numeric; no-op on already-numeric columns)
     mutate(
       Entity = str_wrap(str_to_title(str_trim(as.character(!!sym(entity_var)))), width = 15),
-      Value = as.numeric(!!sym(value_var)),
-      Target = as.numeric(!!sym(target_var)),
+      Value = cerp_numeric(!!sym(value_var), value_var),
+      Target = cerp_numeric(!!sym(target_var), target_var),
       Poor = as.numeric(zone_poor_max),
       Fair = as.numeric(zone_fair_max),
       Good = as.numeric(zone_good_max)
@@ -1031,6 +1152,10 @@ viz_deviation <- function(data,
                           baseline_target, metric_name,
                           chart_title = "", chart_subtitle = "",
                           x_label = "", y_label = "", source_note = "") {
+
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(entity_var, value_var),
+                    what = "the deviation chart")
 
   d <- data
 
@@ -1141,6 +1266,10 @@ viz_ridgeline <- function(data,
                           chart_title = "", chart_subtitle = "",
                           x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(group_var, value_var),
+                    what = "the ridgeline plot")
+
   plot_data <- data %>%
     # 1. Safely drop NAs
     drop_na(all_of(c(group_var, value_var))) %>%
@@ -1222,6 +1351,11 @@ viz_ridgeline <- function(data,
 viz_calendar_heatmap <- function(data,
                                  date_var, value_var, aggregate, metric_name,
                                  chart_title = "", chart_subtitle = "", source_note = "") {
+
+  # Usable-row guard (4B): fail loudly on empty / all-NA input. value_var only
+  # matters when the aggregate actually reads it ("count" ignores it).
+  ess_cols <- c(date_var, if (!identical(aggregate, "count")) value_var)
+  cerp_require_rows(data, ess_cols, what = "the calendar heatmap")
 
   # 1. Parse dates robustly: "2025-11-01 04:36:41", ISO timestamps, plain dates
   dated <- data %>%
@@ -1321,6 +1455,9 @@ viz_choropleth <- function(data, geo, lookup,
                            region_var, value_var, geo_key, n_bins, metric_name,
                            chart_title = "", chart_subtitle = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(region_var, value_var), what = "the district map")
+
   # Resolve messy data names -> canonical geometry names. cerp_harmonize() fails
   # LOUDLY (with closest-match suggestions) on any district it cannot place, so a
   # map is never silently drawn with a district missing.
@@ -1414,6 +1551,11 @@ viz_event_study <- function(data,
                             chart_title = "", chart_subtitle = "",
                             x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(unit_var, time_var, event_time_var,
+                            treat_var, outcome_var),
+                    what = "the event study")
+
   model_df <- data %>%
     drop_na(all_of(c(unit_var, time_var, event_time_var,
                      treat_var, outcome_var))) %>%
@@ -1430,6 +1572,19 @@ viz_event_study <- function(data,
         1L, 0L)
     ) %>%
     drop_na(ev_et, ev_y)
+
+  # 4B fix: feols dumps an opaque collinearity error when nobody (or everybody)
+  # is treated — the interaction has no comparison group and the DiD is
+  # unidentified. Stop with a clear message instead.
+  if (length(unique(model_df$ev_treat)) < 2) {
+    stop(
+      "The event study needs BOTH treated and untreated (comparison) units ",
+      "after coercing '", treat_var, "' to a 1/0 flag, but every unit came ",
+      "out ", if (any(model_df$ev_treat == 1L)) "treated" else "untreated",
+      ". Check the values of that column in the data file.",
+      call. = FALSE
+    )
+  }
 
   if (!(ref_period %in% unique(model_df$ev_et))) {
     stop("ref_period = ", ref_period,
@@ -1519,6 +1674,10 @@ viz_small_multiples <- function(data,
                                 chart_title = "", chart_subtitle = "",
                                 x_label = "", y_label = "", source_note = "") {
 
+  # Usable-row guard (4B): fail loudly on empty / all-NA input.
+  cerp_require_rows(data, c(facet_var, x_var, y_var),
+                    what = "the small-multiples chart")
+
   plot_data <- data %>%
     drop_na(all_of(c(facet_var, x_var, y_var))) %>%
     mutate(
@@ -1580,6 +1739,11 @@ viz_heatmap_matrix <- function(data,
                                metric_name,
                                chart_title = "", chart_subtitle = "",
                                x_label = "", y_label = "", source_note = "") {
+
+  # Usable-row guard (4B): fail loudly on empty / all-NA input. value_var only
+  # matters when the aggregate actually reads it ("count" ignores it).
+  ess_cols <- c(row_var, col_var, if (!identical(aggregate, "count")) value_var)
+  cerp_require_rows(data, ess_cols, what = "the heatmap matrix")
 
   base <- data %>%
     drop_na(all_of(c(row_var, col_var))) %>%
