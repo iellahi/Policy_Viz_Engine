@@ -12,9 +12,9 @@ anything goes wrong, jump to [Possible issues & fixes](#possible-issues--fixes).
 3. **Download this repository.** Either click the green **Code** button on GitHub →
    **Download ZIP** and unzip it, or, if you have git:
    ```
-   git clone https://github.com/iellahi/Cerp_Viz_Repo.git
+   git clone https://github.com/iellahi/Policy_Viz_Engine.git
    ```
-4. **Open the project file** — double-click **`cerp_viz_repo.Rproj`** inside the
+4. **Open the project file** — double-click **`policy_viz_engine.Rproj`** inside the
    folder. This opens RStudio *and* sets everything up (paths, package system).
    Always start from this file, never by opening RStudio first.
    The first launch prints some setup messages — that's normal.
@@ -112,7 +112,7 @@ computer — see `5_tests/README.md`. This matters only if you run the tests.
 
 **Errors about paths, or "could not find file …".**
 Almost always caused by skipping step 4. Close RStudio and reopen the project by
-double-clicking **`cerp_viz_repo.Rproj`** — the project file is what makes all
+double-clicking **`policy_viz_engine.Rproj`** — the project file is what makes all
 paths resolve correctly.
 
 **A report fails with a message naming a column.**

@@ -7,7 +7,7 @@ into policy-ready **HTML** reports without requiring the user to write any R cod
 You edit one config file (`render_config.yml`); the engine renders every visual and,
 optionally, stitches selected ones into a single combined report.
 
-**▶ [Browse the live demo gallery](https://iellahi.github.io/Cerp_Viz_Repo/)** —
+**▶ [Browse the live demo gallery](https://iellahi.github.io/Policy_Viz_Engine/)** —
 every template rendered against the synthetic demo data; click any card to open
 the full report.
 
@@ -49,7 +49,7 @@ issues and their fixes (build tools, `sf` system libraries, fonts, pandoc).
 The short version:
 
 ```r
-# after opening cerp_viz_repo.Rproj in RStudio:
+# after opening policy_viz_engine.Rproj in RStudio:
 renv::restore()                                   # once per machine
 source(here::here("2_R", "2.2_master_knit.R"))    # render everything
 ```
@@ -60,7 +60,7 @@ how to point one at this repo safely and what to ask it for.
 `renv` owns the package environment. Templates **never** install packages at
 render time — a missing package fails loudly and tells you to run
 `renv::restore()`. Output is HTML; no LaTeX is required. **Always open
-`cerp_viz_repo.Rproj` first** so paths resolve from the project root.
+`policy_viz_engine.Rproj` first** so paths resolve from the project root.
 
 ## Quick Start
 
@@ -153,7 +153,7 @@ and how to revert: [CHANGING_COLORS.md](CHANGING_COLORS.md).
 
 ## Publishing the gallery
 
-The [live gallery](https://iellahi.github.io/Cerp_Viz_Repo/) is a copy of the demo
+The [live gallery](https://iellahi.github.io/Policy_Viz_Engine/) is a copy of the demo
 render served by GitHub Pages from `/docs`. To refresh it after a change,
 run a full master knit, then:
 

@@ -31,7 +31,7 @@
 # Output:      docs/ — index.html + report HTMLs + figures/ + .nojekyll.
 #              Commit docs/ and push; GitHub Pages (Settings > Pages > deploy
 #              from branch main, folder /docs) serves it at:
-#                  https://iellahi.github.io/Cerp_Viz_Repo/
+#                  https://iellahi.github.io/Policy_Viz_Engine/
 # ==============================================================================
 
 # renv owns the environment — NEVER install at render time (hard rule 5).
@@ -242,7 +242,7 @@ cerp_publish_docs <- function(
     "git push origin main\n",
     "One-time: GitHub > Settings > Pages > Source: deploy from branch, ",
     "branch `main`, folder `/docs`.\n",
-    "Gallery URL: https://iellahi.github.io/Cerp_Viz_Repo/"
+    "Gallery URL: https://iellahi.github.io/Policy_Viz_Engine/"
   )
   invisible(docs_dir)
 }

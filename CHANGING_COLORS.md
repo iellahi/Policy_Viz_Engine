@@ -1,11 +1,11 @@
 # Changing chart colors
 
 All brand colors live in one file: **`2_R/theme_colors.yml`**. Edit a hex there and
-every chart across all 18 templates updates on the next render. You never touch R code.
+every chart across all 23 templates updates on the next render. You never touch R code.
 
 ## Change a color
 
-1. Open the project via `cerp_viz_repo.Rproj` in RStudio.
+1. Open the project via `policy_viz_engine.Rproj` in RStudio.
 2. Open `2_R/theme_colors.yml` and edit a value, keeping the quotes — e.g.:
 
    ```yaml
