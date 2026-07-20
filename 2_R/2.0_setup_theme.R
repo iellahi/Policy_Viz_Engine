@@ -40,7 +40,15 @@ local({
 # Load the brand hexes from the one editable palette file, then map them onto
 # named roles. `positive`/`negative` are semantic aliases; everything is a
 # reference to a loaded hex, so a change in theme_colors.yml propagates here.
-cerp_hex <- yaml::read_yaml(here::here("2_R", "theme_colors.yml"))
+#
+# The palette path defaults to theme_colors.yml (the single source of truth). The
+# `cerp.palette_path` option lets a caller point this at a DIFFERENT palette file
+# WITHOUT editing theme_colors.yml — used only by the Shiny config-builder to
+# preview alternative colors from a throwaway temp file. Unset (the normal case)
+# it is exactly the original read, so every render is unaffected.
+cerp_palette_path <- getOption("cerp.palette_path",
+                               here::here("2_R", "theme_colors.yml"))
+cerp_hex <- yaml::read_yaml(cerp_palette_path)
 
 cerp_cols <- c(
   text          = cerp_hex$text,      # Deep slate — titles, axis text, anchor lines

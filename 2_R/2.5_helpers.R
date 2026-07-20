@@ -416,3 +416,236 @@ cerp_profile <- function(data) {
 
   list(columns = columns, dataset = dataset)
 }
+
+# ------------------------------------------------------------------------------
+# cerp_recommend(): deterministic template recommender. The engine behind the
+# `recommender` chunk of 3_templates/0.00_data_quality_report.Rmd AND the phase-12
+# Shiny config-builder — one shared rule table, never duplicated. Given a profile
+# (the cerp_profile() output) and the RAW data.frame, return the ranked templates
+# whose column-type profile the data can feed, each with its suggested column ->
+# *_var mapping. A fixed rule table + light name hints: no randomness, no model —
+# same input always yields the same recommendations. Suggestions only; the user
+# confirms the mapping in the template YAML (or the app's Map tab).
+#
+#   profile   the list returned by cerp_profile() (uses profile$columns).
+#   raw_data  the RAW data.frame (readr::read_csv output) — needed for the Likert
+#             level detector, which reads actual values.
+#
+# Returns a data.frame ranked by score (desc) then id (asc), one row per matched
+# template: id, template, why, mapping (a "k = v; k = v" string), score. When no
+# rule matches cleanly it returns a 0-row data.frame with those columns, so callers
+# can branch on nrow() == 0.
+# ------------------------------------------------------------------------------
+cerp_recommend <- function(profile, raw_data) {
+  cols <- profile$columns
+  raw  <- raw_data
+
+  # --- Role extraction from the profile ----------------------------------------
+  nd        <- setNames(cols$n_distinct, cols$column)
+  by_type   <- function(t) cols$column[cols$type == t]
+  num_cols  <- by_type("numeric")
+  cat_cols  <- by_type("categorical")
+  date_cols <- by_type("date")
+  id_cols   <- by_type("id-like")
+
+  nm_match  <- function(pool, rx) pool[grepl(rx, pool, ignore.case = TRUE)]
+  first     <- function(v) if (length(v)) v[[1]] else NA_character_
+
+  # Likert-pattern detector: cleaned levels overlap a rating lexicon, 3–7 levels.
+  likert_lex <- c("strongly disagree","disagree","somewhat disagree","neutral",
+                  "neither agree nor disagree","somewhat agree","agree","strongly agree",
+                  "strongly dissatisfied","dissatisfied","satisfied","very satisfied",
+                  "strongly satisfied","never","rarely","sometimes","often","always",
+                  "poor","fair","good","very good","excellent")
+  is_likert <- function(colname) {
+    v <- unique(tolower(stringr::str_squish(as.character(raw[[colname]]))))
+    v <- v[nzchar(v) & !is.na(v)]
+    if (length(v) < 3 || length(v) > 7) return(FALSE)
+    mean(v %in% likert_lex) >= 0.6
+  }
+
+  # Named-role sub-pools (deterministic; name hints only sharpen, never fabricate).
+  year_num   <- nm_match(num_cols, "year|yr|wave|round|period")
+  time_cols  <- union(date_cols, year_num)
+  target_num <- nm_match(num_cols, "target|goal|benchmark")
+  event_num  <- nm_match(num_cols, "event.?time|rel.?time|time.?to|relative")
+  stage_cats <- nm_match(cat_cols, "stage|step|phase|pipeline")
+  district   <- nm_match(c(cat_cols, id_cols, by_type("text")),
+                         "district|region|province|tehsil|division|zone")
+  # A treatment flag is any 2-level column — categorical ("Treatment"/"Control")
+  # OR numeric (0/1). Name hints (treat/arm/…) sharpen the pick when present.
+  binary_cols <- cols$column[cols$n_distinct == 2 &
+                             cols$type %in% c("categorical", "numeric")]
+  treat_cats <- {
+    hinted <- nm_match(binary_cols, "treat|arm|group|condition|intervention|treated")
+    if (length(hinted)) hinted else binary_cols
+  }
+  likert_cats <- cat_cols[vapply(cat_cols, is_likert, logical(1))]
+  entity_cats <- nm_match(c(cat_cols, id_cols),
+                          "district|school|clinic|facility|entity|unit|region|name")
+  # "Plain" measures: numeric that isn't a target/event-time/year role.
+  measure_num <- setdiff(num_cols, c(target_num, event_num, year_num))
+  outcome_pref <- function() {
+    hinted <- nm_match(measure_num, "score|outcome|rate|result|amount|index|value")
+    first(if (length(hinted)) hinted else measure_num)
+  }
+
+  # --- Rule accumulator ---------------------------------------------------------
+  recs <- list()
+  add  <- function(id, name, why, mapping, score) {
+    recs[[length(recs) + 1]] <<- data.frame(
+      id = id, template = name, why = why,
+      mapping = paste(sprintf("%s = %s", names(mapping), unlist(mapping)),
+                      collapse = "; "),
+      score = score, stringsAsFactors = FALSE)
+  }
+  has <- function(x) length(x) > 0 && !all(is.na(x))
+
+  # --- Rules (one per production template) --------------------------------------
+  # 3.01 dumbbell — 2-level group + before/after numerics
+  {
+    before <- first(nm_match(measure_num, "base|pre|before|initial"))
+    after  <- first(nm_match(measure_num, "end|post|after|final"))
+    if (has(treat_cats) && !is.na(before) && !is.na(after) && before != after) {
+      add("3.01", "Baseline vs endline (dumbbell)",
+          "A treatment/control group with matched before/after measures.",
+          list(group_var = first(treat_cats), before_var = before, after_var = after), 9)
+    }
+  }
+  # 3.02 distribution shifts — group + one numeric
+  if (has(cat_cols) && has(measure_num)) {
+    add("3.02", "Distribution shifts (density)",
+        "A grouping column and a numeric outcome to compare distributions.",
+        list(group_var = first(cat_cols), outcome_var = outcome_pref()), 5)
+  }
+  # 3.03 treatment effects (forest) — treatment 2-level + numeric outcome
+  if (has(treat_cats) && has(measure_num)) {
+    add("3.03", "Treatment effects (forest plot)",
+        "A treatment/control flag and a numeric outcome.",
+        list(group_var = first(treat_cats), outcome_var = outcome_pref()), 7)
+  }
+  # 3.04 subgroup impacts — treatment + a second categorical + numeric
+  {
+    sub <- first(setdiff(cat_cols, first(treat_cats)))
+    if (has(treat_cats) && !is.na(sub) && has(measure_num)) {
+      add("3.04", "Subgroup impacts (coefficient plot)",
+          "A treatment flag, a subgroup dimension, and a numeric outcome.",
+          list(group_var = first(treat_cats), subgroup_var = sub,
+               outcome_var = outcome_pref()), 6)
+    }
+  }
+  # 3.05 waffle — a single categorical (parts of a whole)
+  if (has(cat_cols)) {
+    add("3.05", "Waffle chart (share of whole)",
+        "A categorical status column shown as proportions.",
+        list(status_var = first(cat_cols)), 3)
+  }
+  # 3.06 slopegraph — entity + time (>=2 points) + numeric
+  if (has(entity_cats) && has(time_cols) && has(measure_num)) {
+    add("3.06", "Slopegraph (two-point change)",
+        "An entity, a time column, and a value — change between two periods.",
+        list(entity_var = first(entity_cats), time_var = first(time_cols),
+             value_var = outcome_pref()), 5)
+  }
+  # 3.07 diverging bar — entity + Likert response
+  if (has(likert_cats)) {
+    add("3.07", "Diverging bar (Likert sentiment)",
+        "A Likert-scale response column, ideal for a diverging bar.",
+        list(entity_var = if (has(entity_cats)) first(entity_cats) else first(cat_cols),
+             response_var = first(likert_cats)), 8)
+  }
+  # 3.08 icon array — a single categorical proportion
+  if (has(cat_cols)) {
+    add("3.08", "Icon array (frequency)",
+        "A categorical column shown as an intuitive icon frequency.",
+        list(category_var = first(cat_cols)), 3)
+  }
+  # 3.09 waterfall — stage-like categorical + numeric
+  if (has(stage_cats) && has(measure_num)) {
+    add("3.09", "Waterfall (running total by stage)",
+        "A stage/step column with one numeric amount per stage.",
+        list(category_var = first(stage_cats), value_var = outcome_pref()), 7)
+  }
+  # 3.10 bump — entity + time (>=3 points) + numeric
+  {
+    t <- first(time_cols)
+    if (has(entity_cats) && !is.na(t) && nd[t] >= 3 && has(measure_num)) {
+      add("3.10", "Bump chart (ranking over time)",
+          "An entity tracked across 3+ time points on a numeric metric.",
+          list(entity_var = first(entity_cats), time_var = t,
+               value_var = outcome_pref()), 6)
+    }
+  }
+  # 3.11 bullet — entity + value + target numeric
+  if (has(entity_cats) && has(measure_num) && has(target_num)) {
+    add("3.11", "Bullet chart (value vs target)",
+        "An entity with a value and an explicit target/benchmark column.",
+        list(entity_var = first(entity_cats), value_var = outcome_pref(),
+             target_var = first(target_num)), 7)
+  }
+  # 3.12 deviation bar — entity/category + numeric
+  if (has(entity_cats) && has(measure_num)) {
+    add("3.12", "Deviation bar (vs reference)",
+        "An entity/category with a numeric value to show deviation from a reference.",
+        list(entity_var = first(entity_cats), value_var = outcome_pref()), 4)
+  }
+  # 3.13 ridgeline — multi-level categorical + numeric distribution
+  {
+    grp <- first(cat_cols[nd[cat_cols] >= 3])
+    if (!is.na(grp) && has(measure_num)) {
+      add("3.13", "Ridgeline (distributions by group)",
+          "A categorical with 3+ groups and a numeric distribution to compare.",
+          list(group_var = grp, value_var = outcome_pref()), 5)
+    }
+  }
+  # 3.14 calendar heatmap — a date column + numeric
+  if (has(date_cols) && has(measure_num)) {
+    add("3.14", "Calendar heatmap (daily values)",
+        "A real date column with a numeric value — daily intensity over a calendar.",
+        list(date_var = first(date_cols), value_var = outcome_pref()), 7)
+  }
+  # 3.15 choropleth — district-like names + numeric
+  if (has(district) && has(measure_num)) {
+    add("3.15", "Choropleth map (by district)",
+        "A district/region name column and a numeric metric to shade.",
+        list(region_var = first(district), value_var = outcome_pref()), 8)
+  }
+  # 3.16 event study — unit + time + event-time + treatment + numeric outcome (panel)
+  if (has(id_cols) && has(time_cols) && has(event_num) &&
+      has(treat_cats) && has(measure_num)) {
+    add("3.16", "Event study (dynamic effects)",
+        "A panel with unit, calendar time, event-time, a treatment flag, and an outcome.",
+        list(unit_var = first(id_cols), time_var = first(time_cols),
+             event_time_var = first(event_num), treat_var = first(treat_cats),
+             outcome_var = outcome_pref()), 9)
+  }
+  # 3.17 small multiples — facet categorical + x + y
+  {
+    facet <- first(cat_cols[nd[cat_cols] >= 3])
+    xv    <- first(time_cols)
+    if (!is.na(facet) && !is.na(xv) && has(measure_num)) {
+      add("3.17", "Small multiples (faceted trend)",
+          "A faceting category, an x (usually time), and a numeric y.",
+          list(facet_var = facet, x_var = xv, y_var = outcome_pref()), 5)
+    }
+  }
+  # 3.18 heatmap matrix — two categorical/time axes + numeric
+  {
+    two_cats <- union(cat_cols, time_cols)  # rows x cols; a time column makes a good axis
+    if (length(unique(two_cats)) >= 2 && has(measure_num)) {
+      add("3.18", "Heatmap matrix (category × category)",
+          "Two categorical/time axes and a numeric cell value.",
+          list(row_var = two_cats[[1]], col_var = two_cats[[2]],
+               value_var = outcome_pref()), 4)
+    }
+  }
+
+  # --- Rank (score desc, id asc) and return -------------------------------------
+  if (length(recs) == 0) {
+    return(data.frame(id = character(), template = character(), why = character(),
+                      mapping = character(), score = numeric(),
+                      stringsAsFactors = FALSE))
+  }
+  rec_df <- do.call(rbind, recs)
+  rec_df[order(-rec_df$score, rec_df$id), , drop = FALSE]
+}
