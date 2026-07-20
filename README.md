@@ -37,6 +37,10 @@ the full report.
   Open it first to browse everything rendered. Gitignored (regenerated locally).
 * **/5_tests** — **The Safety Net:** golden-figure regression test (`snapshot.R`)
   and the stress-test suite. See `5_tests/README.md`.
+* **/6_shiny** — **The Config Builder:** a local Shiny app (`app.R`) that helps you
+  *write* `render_config.yml` — profile a CSV, get template recommendations, map
+  columns, preview the chart, and copy out a config entry. It is a front end to the
+  config, not a second render engine (see [Config Builder app](#config-builder-app-6_shiny)).
 * **/docs** — the published copy of the demo gallery, served by GitHub Pages.
   Written only by `2_R/2.9_publish_docs.R` — never by hand (see
   [Publishing the gallery](#publishing-the-gallery)).
@@ -104,6 +108,46 @@ date-parse rate, outliers), per-column issue callouts, and a **deterministic
 template recommender** — a ranked list of which templates the data can feed and
 which column maps to which `*_var` param. It only describes; it never changes your
 data, and nothing calls an external API.
+
+## Config Builder app (`6_shiny`)
+
+A local, point-and-click front end for building `render_config.yml` entries —
+useful if you would rather not hand-edit YAML. Launch it from the project root in
+RStudio (after `renv::restore()`):
+
+```r
+shiny::runApp(here::here("6_shiny"))
+```
+
+Want to see it without launching anything? **[6_shiny/WALKTHROUGH.md](6_shiny/WALKTHROUGH.md)**
+is an annotated screenshot tour of all six tabs, including the session-only
+theme recolour.
+
+It walks the same path as the pre-flight report, one tab at a time: **Data**
+(pick a CSV from `1_data/`, see its profile and flags) → **Recommend** (the same
+deterministic recommender, ranked) → **Map columns** (dropdowns for each `*_var`,
+filtered by expected type, plus the label/text/option params) → **Theme**
+(optional: try alternate chart colours before rendering) → **Preview** (the
+chart, drawn by the very same `viz_*()` function the report uses; download it as
+PNG or PDF) → **Config entry** (a ready-to-paste `reports:` block). Paste that
+entry under `reports:` in `render_config.yml`, then render as usual with
+`2_R/2.2_master_knit.R`.
+
+The **Theme** tab uses native colour pickers seeded from the live palette; your
+picks recolour the preview (and its PNG/PDF). This is **preview-only** — it
+never edits `theme_colors.yml`, so the saved theme stays the default. To change
+colours everywhere, edit `theme_colors.yml` and run `2_R/2.7_build_css.R`, as in
+[Changing Brand Colors](#changing-brand-colors).
+
+**What it is — and is not.** It is a *config editor*: it reads your data and the
+templates, and it emits YAML. It is **not** a render engine and does not write to
+`render_config.yml` for you — it shows the entry to copy, leaving your commented
+config untouched. It runs **locally only**: field data is read in place from
+`1_data/`, never uploaded, and nothing is sent to an external service. It reads the
+brand palette live from `theme_colors.yml`, so it always matches the reports.
+Three templates (3.15 choropleth, 3.16 event study, 3.21 summary table) can still
+be mapped and emitted, but show a "render to see" note instead of a live preview —
+they need geo assets, fit a model, or return a table rather than a quick chart.
 
 ## Template Dictionary
 
